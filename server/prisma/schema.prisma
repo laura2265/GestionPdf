@@ -1,0 +1,209 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.0.x", "debian-openssl-1.1.x", "rhel-openssl-1.1.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model application_files {
+  id             BigInt                 @id @default(autoincrement())
+  application_id BigInt
+  kind           application_files_kind
+  file_name      String?                @db.VarChar(255)
+  mime_type      String?                @db.VarChar(100)
+  byte_size      Int?
+  storage_path   String?                @db.VarChar(500)
+  sha256         String?                @db.Char(64)
+  uploaded_by    BigInt?
+  uploaded_at    DateTime               @default(now()) @db.Timestamp(0)
+  data           Bytes?
+  applications   applications           @relation(fields: [application_id], references: [id], onDelete: Cascade, map: "fk_files_app")
+  users          users?                 @relation(fields: [uploaded_by], references: [id], map: "fk_files_user")
+
+  @@index([uploaded_by], map: "fk_files_user")
+  @@index([application_id], map: "idx_files_app")
+  @@index([kind], map: "idx_files_kind")
+}
+
+model application_history {
+  id             BigInt                           @id @default(autoincrement())
+  application_id BigInt
+  from_status    application_history_from_status?
+  to_status      application_history_to_status
+  changed_by     BigInt?
+  comment        String?                          @db.Text
+  changed_at     DateTime                         @default(now()) @db.Timestamp(0)
+  applications   applications                     @relation(fields: [application_id], references: [id], onDelete: Cascade, map: "fk_hist_app")
+  users          users?                           @relation(fields: [changed_by], references: [id], map: "fk_hist_user")
+
+  @@index([changed_by], map: "fk_hist_user")
+  @@index([application_id, changed_at], map: "idx_hist_app_time")
+}
+
+model application_pdfs {
+  id             BigInt       @id @default(autoincrement())
+  application_id BigInt
+  version        Int
+  file_name      String       @db.VarChar(255)
+  storage_path   String       @db.VarChar(500)
+  generated_by   BigInt?
+  generated_at   DateTime     @default(now()) @db.Timestamp(0)
+  applications   applications @relation(fields: [application_id], references: [id], onDelete: Cascade, map: "fk_pdfs_app")
+  users          users?       @relation(fields: [generated_by], references: [id], map: "fk_pdfs_user")
+
+  @@unique([application_id, version], map: "uk_pdf_version")
+  @@index([generated_by], map: "fk_pdfs_user")
+}
+
+model application_requirements {
+  id          Int                           @id @default(autoincrement())
+  kind        application_requirements_kind @unique(map: "kind")
+  is_required Boolean                       @default(false)
+  observacion String?                       @db.VarChar(255)
+}
+
+model applications {
+  id                                      BigInt                      @id @default(autoincrement())
+  nombres                                 String                      @db.VarChar(100)
+  apellidos                               String                      @db.VarChar(100)
+  id_client                               String                      @unique(map: "applications_id_client") @db.VarChar(30)
+  tipo_documento                          applications_tipo_documento
+  numero_documento                        String                      @db.VarChar(50)
+  direccion                               String?                     @db.VarChar(200)
+  barrio                                  String                      @db.VarChar(150)
+  correo                                  String?
+  numero_contacto                         String?                     @db.VarChar(50)
+  estrato_id                              Int?                        @db.SmallInt
+  estado                                  applications_estado         @default(BORRADOR)
+  tecnico_id                              BigInt
+  supervisor_id                           BigInt?
+  enviada_at                              DateTime?                   @db.DateTime(0)
+  revisada_at                             DateTime?                   @db.DateTime(0)
+  aprobada_at                             DateTime?                   @db.DateTime(0)
+  rechazada_at                            DateTime?                   @db.DateTime(0)
+  motivo_rechazo                          String?                     @db.Text
+  created_at                              DateTime                    @default(now()) @db.Timestamp(0)
+  updated_at                              DateTime                    @default(now()) @db.Timestamp(0)
+  UPZ                                     String                      @db.VarChar(255)
+  application_files                       application_files[]
+  application_history                     application_history[]
+  application_pdfs                        application_pdfs[]
+  estrato_catalog                         estrato_catalog?            @relation(fields: [estrato_id], references: [id], onDelete: Restrict, map: "fk_app_estrato")
+  users_applications_supervisor_idTousers users?                      @relation("applications_supervisor_idTousers", fields: [supervisor_id], references: [id], map: "fk_app_supervisor")
+  users_applications_tecnico_idTousers    users                       @relation("applications_tecnico_idTousers", fields: [tecnico_id], references: [id], map: "fk_app_tecnico")
+
+  @@index([estrato_id], map: "fk_app_estrato")
+  @@index([estado], map: "idx_app_estado")
+  @@index([supervisor_id, estado], map: "idx_app_supervisor_estado")
+  @@index([tecnico_id, estado], map: "idx_app_tecnico_estado")
+}
+
+model audit_log {
+  id         BigInt   @id @default(autoincrement())
+  user_id    BigInt?
+  action     String   @db.VarChar(64)
+  entity     String   @db.VarChar(64)
+  entity_id  BigInt?
+  details    String?  @db.LongText
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  users      users?   @relation(fields: [user_id], references: [id], map: "fk_audit_user")
+
+  @@index([user_id, created_at], map: "idx_audit_user_time")
+}
+
+model estrato_catalog {
+  id           Int            @id @default(autoincrement()) @db.SmallInt
+  value        Int            @unique(map: "value") @db.TinyInt
+  label        String?        @db.VarChar(50)
+  applications applications[]
+}
+
+model roles {
+  id          Int          @id @default(autoincrement())
+  code        roles_code   @unique(map: "code")
+  name        String       @db.VarChar(100)
+  description String?      @db.VarChar(255)
+  created_at  DateTime     @default(now()) @db.Timestamp(0)
+  user_roles  user_roles[]
+}
+
+model user_roles {
+  user_id     BigInt
+  role_id     Int
+  assigned_at DateTime @default(now()) @db.Timestamp(0)
+  roles       roles    @relation(fields: [role_id], references: [id], map: "fk_user_roles_role")
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade, map: "fk_user_roles_user")
+
+  @@id([user_id, role_id])
+  @@index([role_id], map: "fk_user_roles_role")
+}
+
+model users {
+  id                                             BigInt                @id @default(autoincrement())
+  full_name                                      String                @db.VarChar(150)
+  email                                          String                @unique(map: "email")
+  password                                       String?               @db.VarChar(300)
+  phone                                          String?               @db.VarChar(50)
+  is_active                                      Boolean               @default(true)
+  created_at                                     DateTime              @default(now()) @db.Timestamp(0)
+  updated_at                                     DateTime              @default(now()) @db.Timestamp(0)
+  application_files                              application_files[]
+  application_history                            application_history[]
+  application_pdfs                               application_pdfs[]
+  applications_applications_supervisor_idTousers applications[]        @relation("applications_supervisor_idTousers")
+  applications_applications_tecnico_idTousers    applications[]        @relation("applications_tecnico_idTousers")
+  audit_log                                      audit_log[]
+  user_roles                                     user_roles[]
+}
+
+enum roles_code {
+  ADMIN
+  SUPERVISOR
+  TECNICO
+}
+
+enum application_history_from_status {
+  BORRADOR
+  ENVIADA
+  APROBADA
+  RECHAZADA
+}
+
+enum applications_tipo_documento {
+  CC
+  CE
+  PAS
+  NIT
+  OTRO
+}
+
+enum application_history_to_status {
+  BORRADOR
+  ENVIADA
+  APROBADA
+  RECHAZADA
+}
+
+enum applications_estado {
+  BORRADOR
+  ENVIADA
+  APROBADA
+  RECHAZADA
+}
+
+enum application_requirements_kind {
+  FOTO_FACHADA
+  FOTO_NOMENCLATURA
+  FOTO_TEST_VELOCIDAD
+  ORDEN_TRABAJO
+}
+
+enum application_files_kind {
+  FOTO_FACHADA
+  FOTO_NOMENCLATURA
+  FOTO_TEST_VELOCIDAD
+  ORDEN_TRABAJO
+}
