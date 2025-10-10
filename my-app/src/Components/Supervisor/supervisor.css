@@ -1,0 +1,330 @@
+/* ---------- HEADER ---------- */
+.content-dashSuper {
+  text-align: center;
+  font-family: 'Poppins', sans-serif;
+  margin-bottom: 20px;
+}
+
+.content-dashSuper h2 {
+  font-family: 'Poppins', sans-serif;
+  font-size: 2.8rem;
+  font-weight: bold;
+  color: #2E2A7B;
+  position: relative;
+  display: inline-block;
+  margin-bottom: 30px;
+}
+
+.content-dashSuper h2::after {
+  content: '';
+  position: absolute;
+  width: 0%;
+  height: 4px;
+  bottom: -8px;
+  left: 50%;
+  background: #FF3C3C;
+  border-radius: 4px;
+  transition: all 0.4s ease;
+}
+
+.content-dashSuper h2:hover::after {
+  width: 60%;
+  left: 20%;
+}
+
+/* ---------- NAV BUTTONS ---------- */
+.ButtonsHead {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+.ButtonsHead button {
+  padding: 10px 18px;
+  border-radius: 25px;
+  border: none;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.ButtonsHead button:hover {
+  opacity: 0.9;
+}
+
+.ButtonsHead .bg-gray-900 {
+  background: #2E2A7B !important;
+  color: #fff !important;
+}
+
+.ButtonsHead .bg-gray-200 {
+  background: #f1f1f1;
+  color: #333;
+}
+
+.refreshBtn {
+  background: #FF3C3C !important;
+  color: #fff !important;
+  font-weight: bold;
+}
+
+/* ---------- CARDS ---------- */
+.cards-container {
+  display: flex;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 25px;
+  padding: 20px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  padding: 20px;
+  text-align: center;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card h3 {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.card p {
+  font-size: 0.95rem;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.card-buttons {
+  margin-top: 15px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.card-buttons button {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+/* Botones de acción */
+.card-buttons button:hover {
+  opacity: 0.85;
+}
+
+.card-buttons .approve {
+  background: #28a745;
+  color: #fff;
+}
+
+.card-buttons .reject {
+  background: #dc3545;
+  color: #fff;
+}
+
+.card-buttons .approve:hover {
+  background: #218838;
+}
+
+.card-buttons .reject:hover {
+  background: #c82333;
+}
+
+/* ---------- DRAWER ---------- */
+.drawerWrap {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.drawer {
+  border-radius: 16px 0 0 16px;
+}
+
+.drawer h3 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #2E2A7B;
+}
+
+/* ---------- RESPONSIVE ---------- */
+@media (max-width: 768px) {
+  .content-dashSuper h2 {
+    font-size: 1.6rem;
+  }
+
+  .card {
+    padding: 15px;
+  }
+
+  .card h3 {
+    font-size: 1.1rem;
+  }
+
+  .card-buttons button {
+    flex: 1 1 45%;
+  }
+}
+
+/*lista*/
+
+/* ---------- DRAWER DETALLE ---------- */
+.drawer {
+  background: #fff;
+  border-radius: 16px 0 0 16px;
+  padding: 20px;
+}
+
+.drawer h3 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #2E2A7B;
+  margin-bottom: 15px;
+}
+
+/* Contenedor general */
+.detail-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+@media (max-width: 768px) {
+  .detail-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Cada campo */
+.detail-field {
+  background: #f9f9f9;
+  border-radius: 10px;
+  padding: 12px 15px;
+  border: 1px solid #eee;
+  transition: background 0.3s ease;
+}
+
+.detail-field:hover {
+  background: #f1f1ff;
+}
+
+.detail-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 5px;
+}
+
+.detail-value {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #333;
+  word-break: break-word;
+}
+
+/* Adjuntos */
+.detail-attachments {
+  margin-top: 20px;
+}
+
+.detail-attachments h4 {
+  font-size: 1rem;
+  font-weight: bold;
+  margin-bottom: 10px;
+  color: #2E2A7B;
+}
+
+.fileList{
+  overflow-y: scroll;
+  max-height: 500px;
+}
+
+/* Buscador */
+.searchWrap { display:flex; justify-content:center; padding: 0 20px 10px; }
+.searchInput { width:100%; max-width:560px; border:1px solid #363636; border-radius:12px; padding:10px 14px; font-size:0.95rem; }
+
+
+/* Lista de archivos con preview */
+.filesLayout { display:grid; grid-template-columns: 1.1fr 1.6fr; gap:16px; }
+.fileList { min-height: 200px; }
+.filePreview { min-height: 300px; border:1px solid #eee; border-radius:12px; padding:10px; background:#c9dbe688; }
+
+.filePreview1 { max-height: 250px; border:1px solid #eee; border-radius:12px; padding:10px; background:#c9dbe688; }
+
+.fileGrid { list-style:none; padding:0; margin:0; display:grid; grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+.fileItem { border:1px solid #aaaaaa; border-radius:12px; padding:10px; background:#fff; display:flex; flex-direction:column; gap:8px; }
+.fileThumb { height:120px; border-radius:10px; background:#dedede; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.fileThumb img { width:100%; height:100%; object-fit:cover; }
+.thumbPdf, .thumbOther { font-weight:700; color:#2E2A7B; }
+.fileMeta { min-height:38px; }
+.fileName { font-size:0.9rem; font-weight:600; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fileInfo { font-size:0.75rem; color:#6b7280; }
+.fileActions { display:flex; gap:8px; }
+.btnLight { background:#b8b8b8; border:none; border-radius:8px; padding:6px 10px; }
+.btnDark { width:50px;background:#2E2A7B; color:#fff; text-decoration:none; border-radius:8px; padding:6px; }
+
+/* Preview */
+.previewEmpty { color:#6b7280; font-size:0.95rem; padding:12px; }
+.previewWrap { height:100%; display:flex; flex-direction:column; gap:8px; }
+.previewTitle { font-weight:600; font-size:0.95rem; color:#2E2A7B; }
+.previewImg { width:100%; max-height:480px; object-fit:contain; border-radius:10px; background:#fff; }
+.previewPdf { width:100%; height:520px; border:none; border-radius:10px; background:#fff; }
+.previewUnknown { color:#6b7280; font-size:0.9rem; }
+
+
+/* Responsivo */
+@media (max-width: 992px) {
+.filesLayout { grid-template-columns: 1fr; }
+.previewPdf { height:420px; }
+}
+
+.attachments input, 
+.attachments textarea {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+h4{
+  font-size: 32px;
+}
+.attachments input[type="file"] {
+  display: none;
+}
+
+/* Estilo del dropzone */
+.attachments .dz {
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 32px;
+  text-align: center;
+  color: #334155; 
+  cursor: pointer;
+  transition: border-color .2s, background-color .2s;
+  background: #fff;
+}
+.attachments .dz:hover {
+  border-color: #3b82f6;      
+  background: #eff6ff;
+}
+.attachments .card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 3px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.05);
+}
+.attachments .title {
+  font-size: 22px;
+  color: #111827;
+  margin-bottom: 42px;
+}

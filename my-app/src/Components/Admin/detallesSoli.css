@@ -1,0 +1,96 @@
+
+.dashboard-container{
+  width: min(1200px, 100% - 32px);
+  margin-inline: auto;
+  padding-block: 24px;
+}
+
+/* Grilla principal */
+.main-grid{
+  display: grid;
+  grid-template-columns: 1fr;   /* móvil */
+  gap: 18px;
+  min-height: 0;
+}
+@media (min-width: 900px){
+  .main-grid{ grid-template-columns: 2fr 1fr; }  /* desktop: dos columnas */
+}
+
+/* Columna izquierda */
+.left-grid{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+}
+@media (min-width: 900px){
+  .left-grid{ grid-template-columns: 1fr 1fr; }
+}
+
+/* Secciones y tablas: ¡sin alturas fijas! */
+.section, .sectionTable{ min-height: 0; }
+.sectionTable{
+  height: auto;           /* sustituye el 300px */
+  max-height: none;
+  overflow: auto;         /* scroll interno si hace falta */
+}
+.btn a{
+    text-decoration: none;
+    color: #333;
+}
+
+/* Visor lateral (img/pdf) */
+.pdf-viewer{ height: clamp(320px, 60vh, 720px); border-radius: var(--radius); overflow: hidden; }
+.pdf-viewer iframe{ width: 100%; height: 100%; border: 0; display: block; }
+
+/* Tabla responsive (mismo patrón que ya te pasé) */
+.table.responsive{
+  width: 100%;
+  border-collapse: collapse;
+  font-size: clamp(12px, 1.35vw, 14px);
+}
+.table.responsive td:first-child,
+.table.responsive .col-file { word-break: break-word; }
+.actions-col{ display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+@media (max-width: 520px){
+  .actions-col{ justify-content:stretch; }
+  .actions-col .btn.small{ flex:1; min-width:120px; }
+}
+@media (max-width: 760px){
+  .table.responsive thead{ display:none; }
+  .table.responsive,
+  .table.responsive tbody,
+  .table.responsive tr,
+  .table.responsive td{ display:block; width:100%; }
+  .table.responsive tr{
+    background: var(--card);
+    border: 1px solid #eef2f7;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+  .table.responsive td{ border:0; padding:6px 2px; }
+  .table.responsive td::before{
+    content: attr(data-label);
+    display:block; font-size:12px; color:var(--muted); margin-bottom:2px; letter-spacing:.2px;
+  }
+  .table.responsive td.actions{ padding-top:8px; }
+}
+
+.viewer-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+a{
+  text-decoration: none;
+}
+
+.mensaje{
+  color: #757575;
+}
+
+.pdf-viewer { height: calc(100vh - 240px); }
+.pdf-frame { width: 100%; height: 100%; border: 0; }

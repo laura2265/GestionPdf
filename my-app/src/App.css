@@ -1,0 +1,100 @@
+*{
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+body {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  place-items: center; 
+  margin: 0;
+}
+
+
+.contentLogin{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+.FormLogin{
+  max-width: 450px;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.351);
+  margin-left: auto;
+  margin-right: auto;
+}
+.FormLogin h1{
+  margin-bottom: 31px;
+  text-align: center;
+}
+
+.FormLogin .inputContainer {
+  position: relative;
+  margin-top: 10px;
+}
+
+.FormLogin .inputContainerInput {
+  max-width: 262px;
+  color: #000;
+  padding: 10px;
+  border: 2px solid #9d9d9d;
+  border-radius: 4px;
+  outline: 2px solid rgb(119, 119, 119);
+  background-color: transparent;
+  transition: outline-color 500ms;
+}
+
+.FormLogin .inputContainerInput:is(:focus, :valid) {
+  outline-color: rgb(164, 164, 164);
+}
+
+.FormLogin .inputContainerLabel {
+  position: absolute;
+  top: -27px;
+  transform: translateY(30%);
+  padding: 0 5px;
+  font-size: 16px;
+  color: #868686; 
+  pointer-events: none;
+  transition: all 0.3s ease;
+}
+
+.FormLogin .inputContainerInput:focus + .inputContainerLabel,
+.inputContainerInput:valid + .inputContainerLabel {
+  padding-inline: 10px;
+  translate: 0px -15px;
+  scale: 0.8;
+  font-size: 20px;
+}
+
+.FormLogin .InputButton1 {
+  background: none;
+  border: 1px solid #000;
+  color: #333333;
+  width: 100px;
+  height: 40px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: 0.3s;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.FormLogin .InputButton1:hover {
+  transform: scale(1.1);
+  background-color: rgb(203, 203, 203);
+}
+
+.error {
+  margin-top: -12px;
+  margin-bottom: 32px;
+  margin-left: 12px;
+  color: tomato;
+  font-size: 12px;
+  font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 
+               'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+}
