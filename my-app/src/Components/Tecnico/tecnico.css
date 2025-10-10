@@ -51,16 +51,33 @@
 .ButtonsHead .button1{
   margin-right: 17px;
 }
+
 .cards {
   padding: 22px;
+  max-height: 60vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
+
 .cards-container {
-  display: flex;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
   width: 100%;
+  align-content: start; 
+  min-width: 0;
 }
+
+@media (max-width: 1200px) {
+  .cards-container { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 768px) {
+  .cards-container { grid-template-columns: 1fr; }
+}
+
 
 .card {
   background: #fff;
@@ -335,25 +352,6 @@ button:hover {
 @media (max-width: 992px) {
   .Headers h1 {
     font-size: 2rem;
-  }
-}
-
-@media (max-width: 768px) {
-  .cards-container {
-    grid-template-columns: 1fr;
-  }
-
-  .upload-list {
-    grid-template-columns: 1fr;
-  }
-
-  .ButtonsHead {
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .card-buttons {
-    flex-direction: column;
   }
 }
 

@@ -472,35 +472,36 @@ export default function SupervisorDashboardV3({ classes = {} }) {
       </div>
 
       {error && <div className="p-3 rounded bg-red-50 text-red-700 mb-3">{error}</div>}
-
-      <section className="cards-container">
-        {filtered.length === 0 ? (
-          <div className="p-4 text-gray-600">No hay solicitudes.</div>
-        ) : (
-          filtered.map((row) => (
-            <div key={row.id} className="card">
-              <h3>{row.nombre}</h3>
-              <p><strong>ID:</strong> {row.id}</p>
-              <p><strong>Documento:</strong> {row.documento}</p>
-              <p><strong>Fecha:</strong> {row.fecha}</p>
-              <div className="card-buttons">
-                <button onClick={() => openDetail(row)}>Detalle</button>
-                <button onClick={() => openFiles(row)}>Archivos</button>
-                <button onClick={() => openPdfs(row)}>PDFs</button>
-                {tab === "ENVIADA" && (
-                  <>
-                    <button className="approve" onClick={() => approve(row)}>Aprobar</button>
-                    <button className="reject" onClick={() => reject(row)}>Rechazar</button>
-                  </>
-                )}
-                <button className="px-3 py-2 rounded bg-gray-200" onClick={() => changeStatus(row)}>
-                  Cambiar estado
-                </button>
+      <div className="cards">
+        <section className="cards-container">
+          {filtered.length === 0 ? (
+            <div className="p-4 text-gray-600">No hay solicitudes.</div>
+          ) : (
+            filtered.map((row) => (
+              <div key={row.id} className="card">
+                <h3>{row.nombre}</h3>
+                <p><strong>ID:</strong> {row.id}</p>
+                <p><strong>Documento:</strong> {row.documento}</p>
+                <p><strong>Fecha:</strong> {row.fecha}</p>
+                <div className="card-buttons">
+                  <button onClick={() => openDetail(row)}>Detalle</button>
+                  <button onClick={() => openFiles(row)}>Archivos</button>
+                  <button onClick={() => openPdfs(row)}>PDFs</button>
+                  {tab === "ENVIADA" && (
+                    <>
+                      <button className="approve" onClick={() => approve(row)}>Aprobar</button>
+                      <button className="reject" onClick={() => reject(row)}>Rechazar</button>
+                    </>
+                  )}
+                  <button className="px-3 py-2 rounded bg-gray-200" onClick={() => changeStatus(row)}>
+                    Cambiar estado
+                  </button>
+                </div>
               </div>
-            </div>
-          ))
-        )}
-      </section>
+            ))
+          )}
+        </section>
+      </div>
 
       <Drawer open={drawer === "detail"} title={sel ? `Detalle — Solicitud #${sel.id}` : "Detalle"} onClose={() => setDrawer(null)}>
         {!detail ? (
