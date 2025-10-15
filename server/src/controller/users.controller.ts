@@ -22,7 +22,7 @@ export class UsersController{
     static async list(req: Request, res: Response, next: NextFunction) {
       try {
         const page = Number(req.query.page ?? 1);
-        const size = Number(req.query.size ?? 100);
+        const size = Number(req.query.size ?? 300);
         const onlyActive = (req.query.onlyActive ?? 'true') === 'true';
 
         const result = await UsersService.list({ page, size, onlyActive });
@@ -68,18 +68,22 @@ export class UsersController{
     }
 
 
-    static async update(req: Request, res: Response, next: NextFunction) {
-        try {
-            const id = Number(req.params.id);  
-            const result = await UsersService.update(id, req.body); 
-
-            const resultWithStringIds = convertBigIntToString(result);
-
-            res.json(resultWithStringIds);  
-        } catch (err) {
-            next(err); 3
-        }
+ static async update(req: Request, res: Response, next: NextFunction) {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ message: "Invalid user id" });
     }
+
+    const result = await UsersService.update(id, req.body);
+    
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+
 
 
     static async deactivate(req:Request, res: Response, next: NextFunction){

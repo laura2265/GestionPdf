@@ -106,7 +106,7 @@ const filtered = useMemo(() => {
       (String(i.documento || "")).toLowerCase().includes(qq) ||
       String(i.tecnico_id).includes(qq)
     );
-  }, [visibleByState, q]);
+  }, [visibleByState, q]);  
 
   const nuevaSolicitud = () => {
     navigate(`/form-tecnico`);

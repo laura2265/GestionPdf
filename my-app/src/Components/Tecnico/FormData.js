@@ -163,7 +163,7 @@ export default function FormData({ borrador, volver, onDraftSaved }) {
 
         <div className="Container2">
           <div className="inputContainer">
-            <label className="block text-sm">UPZ</label>
+              <label className="block text-sm">UPZ</label>
               <select name="UPZ" value={form.UPZ} onChange={handleChange} required className="w-full border rounded p-2">
                 <option value="">-Seleccionar una opción-</option>
                 <option value="LUCERO">LUCERO</option>

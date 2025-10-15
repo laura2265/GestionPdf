@@ -90,11 +90,45 @@ body {
 }
 
 .error {
-  margin-top: -12px;
+  margin-top: 2px;
   margin-bottom: 32px;
   margin-left: 12px;
   color: tomato;
   font-size: 12px;
   font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 
                'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+}
+
+.pw-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.pw-input {
+  width: 100%;
+  padding-right: 40px; 
+}
+
+
+.pw-toggle {
+  all: unset;                
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 28px;
+  width: 28px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  opacity: .75;
+}
+
+/* estados */
+.pw-toggle:hover { opacity: 1; }
+.pw-toggle:focus {
+  outline: 2px solid #2684ff;
+  outline-offset: 2px;
+  border-radius: 6px;
 }

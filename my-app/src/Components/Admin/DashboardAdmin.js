@@ -48,24 +48,16 @@ function MiniLineChart({ data, height = 160, padding = 24 }) {
 }
 
 
+
 function DashboardAdmin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [users, setUsers] = useState([]);
   const [appsByUser, setAppsByUser] = useState({});
-  const [applications, setApplications] = useState([]);
   const [activityHistory, setActivityHistory] = useState([]);
-    // arriba, junto a otros useState:
-  const [showDetails, setShowDetails] = useState(false);
-  const [selectedApp, setSelectedApp] = useState(null);
+
 
   const [q, setQ] = useState("");
-
-const openDetails = (app) => { setSelectedApp(app); setShowDetails(true); };
-const closeDetails = () => { setShowDetails(false); setSelectedApp(null); };
-
-const getPdfUrl = (app) => `https://api.supertv.com.co/api/applications/${app.id}/report.pdf`;
-
 
   const fetchUsers = async () => {
     const res = await fetch('https://api.supertv.com.co/api/users');
@@ -82,21 +74,21 @@ const getPdfUrl = (app) => `https://api.supertv.com.co/api/applications/${app.id
   }, [appsByUser]);
 
   const filteredApps = useMemo(() => {
-  const query = q.trim().toLowerCase();
-  if (!query) return allApps;
+    const query = q.trim().toLowerCase();
+    if (!query) return allApps;
 
-  return allApps.filter((a) => {
-    const id = String(a.id || "").toLowerCase();
-    const doc = String(a.numero_documento || a.dni || "").toLowerCase();
-    const estado = String(a.estado || a.status || "").toLowerCase();
+    return allApps.filter((a) => {
+      const id = String(a.id || "").toLowerCase();
+      const doc = String(a.numero_documento || a.dni || "").toLowerCase();
+      const estado = String(a.estado || a.status || "").toLowerCase();
 
-    return (
-      id.includes(query) ||
-      doc.includes(query) ||
-      estado.includes(query)
-    );
-  });
-}, [q, allApps]);
+      return (
+        id.includes(query) ||
+        doc.includes(query) ||
+        estado.includes(query)
+      );
+    });
+  }, [q, allApps]);
 
 
   const fetchAppsForUser = async (idUser) => {
@@ -114,6 +106,8 @@ const getPdfUrl = (app) => `https://api.supertv.com.co/api/applications/${app.id
 
 
 const navigate = useNavigate();
+
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -219,11 +213,20 @@ useEffect(() => {
     localStorage.removeItem("auth");
     window.location.href = "/";
   };
+  const Usuarios=()=>{
+    navigate("/admin-users")
+  }
   return (
   <div className="dashboard-container">
     <header className="dashboard-header">
       <h1 className="dashboard-title">Panel Administrativo</h1>
       <div className='header-actions'>
+        <button
+          className="btn danger"
+          onClick={Usuarios} 
+        >
+          Usuarios
+        </button>
         <button
           className="btn danger"
           onClick={cerrarSesion}
@@ -239,7 +242,7 @@ useEffect(() => {
         {/* KPIs */}
         <div className="kpi-row">
           <div className="kpi-card">
-            <div className="kpi-dot orange">$</div>
+            <div className="kpi-dot bg-dark">👤</div>
             <div>
               <div className="kpi-meta">Usuarios</div>
               <div className="kpi-value">{users.length}</div>
@@ -299,7 +302,7 @@ useEffect(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredApps.slice(0, 50).map((a) =>{
+                  {filteredApps.slice(0, 300).map((a) =>{
                     const fullName = a.nombres ? `${a.nombres} ${a.apellidos ?? ''}`.trim() : (a.full_name || '-');
                     const estado = (a.estado || a.status || '-');
                     return (

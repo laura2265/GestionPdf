@@ -32,7 +32,6 @@
   left: 20%;
 }
 
-/* ---------- NAV BUTTONS ---------- */
 .ButtonsHead {
   display: flex;
   justify-content: center;
@@ -40,7 +39,7 @@
   gap: 10px;
 }
 
-.ButtonsHead button {
+.ButtonsHead button { 
   padding: 10px 18px;
   border-radius: 25px;
   border: none;

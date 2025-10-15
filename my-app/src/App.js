@@ -10,6 +10,9 @@ import DetallesSolicitud from './Components/Admin/DetallesSolicitud.js';
 import { PrivateRouter } from './Components/PrivateRouter/PrivateRouter.js';
 import UploadDocs from './Components/Tecnico/UploadDocs.js';
 import UploadImage from './Components/Tecnico/UploadImage.js';
+import CrearUser from './Components/Admin/Users/CrearUser.js';
+import AdminUsers from './Components/Admin/Users/AdminUsers.js';
+import ActualizarUser from './Components/Admin/Users/ActualizarUser.js';
 
 function App() {  
   return (
@@ -23,6 +26,22 @@ function App() {
           <Route path='/admin' element={
             <PrivateRouter allowedRoles={[1]}>
               <DashboardAdmin />
+            </PrivateRouter>
+          }/>
+
+          <Route path='/admin-users' element={
+            <PrivateRouter allowedRoles={[1]}>
+              <AdminUsers />
+            </PrivateRouter>
+          }/>
+          <Route path='/crear-user' element={
+            <PrivateRouter allowedRoles={[1]}>
+              <CrearUser />
+            </PrivateRouter>
+          }/>
+          <Route path='/actualizar-user/:id' element={
+            <PrivateRouter allowedRoles={[1]}>
+              <ActualizarUser />
             </PrivateRouter>
           }/>
          

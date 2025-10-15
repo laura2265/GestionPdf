@@ -4,7 +4,6 @@ import './supervisor.css'
 const API_BASE ="https://api.supertv.com.co";
 const cx = (...a) => a.filter(Boolean).join(" ");
 
-
 const FIXED_REQUIREMENTS = [
   { kind: "FOTO_FACHADA",                   required: true,  label: "Fachada (Imagen)" },
   { kind: "FOTO_NOMENCLATURA", required: true,  label: "Nomenclatura (Imagen)" },
@@ -14,7 +13,6 @@ const FIXED_REQUIREMENTS = [
 
 const ADMIN_ONLY_KINDS = ["FOTO_FACHADA", "FOTO_NOMENCLATURA", "FOTO_TEST_VELOCIDAD", "ORDEN_TRABAJO"];
 
-
 const KIND_ACCEPT = {
   FOTO_FACHADA: "image/*",
   FOTO_NOMENCLATURA: "image/*",
@@ -22,15 +20,14 @@ const KIND_ACCEPT = {
   ORDEN_TRABAJO: "image/*",
 };
 
-
 const ALL_KINDS = FIXED_REQUIREMENTS.map(r => r.kind);
-
 
 const TABS = [
   { key: "ENVIADA", label: "En revisión" },
   { key: "APROBADA", label: "Aprobadas" },
   { key: "RECHAZADA", label: "Rechazadas" },
 ];
+
 const firstNonEmpty = (...vals) => vals.find(v => v !== undefined && v !== null && String(v).trim() !== "");
 const absolutize = (u, base) => /^https?:\/\//i.test(u) ? u : `${base}${u?.startsWith("/") ? "" : "/"}${u ?? ""}`;
 
@@ -65,7 +62,6 @@ export default function SupervisorDashboardV3({ classes = {} }) {
   const [missingKinds, setMissingKinds] = useState([]);
   const [addFilesSel, setAddFilesSel] = useState({});
 
-
   const fetchList = async () => {
     setLoading(true); setError("");
     try {
@@ -74,7 +70,7 @@ export default function SupervisorDashboardV3({ classes = {} }) {
         res = await fetch(`${API_BASE}/api/applications?status=${encodeURIComponent(tab)}`, { headers });
       }
       const data = await res.json().catch(() => ({}));
-      
+
       if (!res.ok) throw new Error(data?.message || "No se pudieron cargar las solicitudes");
       const list = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
       const toNum = (v) => (typeof v === 'bigint' ? Number(v) : Number(v ?? NaN));
@@ -134,7 +130,9 @@ export default function SupervisorDashboardV3({ classes = {} }) {
       const res = await fetch(`${API_BASE}/api/applications/${row.id}`, { headers });
       const data = await res.json().catch(() => ({}));
       if (res.ok) setDetail(data);
-    } catch {}
+    } catch {
+      return;
+    }
   };
 
   const openFiles = async (row) => {
@@ -153,7 +151,7 @@ export default function SupervisorDashboardV3({ classes = {} }) {
       const present = new Set(mapped.map(f => String(f.kind || "").toUpperCase()));
       const missing = ALL_KINDS.filter(k => !present.has(k));
       setMissingKinds(missing);
-      
+
 
       const adminMissing = missing.filter(k => ADMIN_ONLY_KINDS.includes(k));
       setAddFilesSel({});
@@ -327,6 +325,7 @@ export default function SupervisorDashboardV3({ classes = {} }) {
             body: JSON.stringify({ estado: "RECHAZADA", motivo }),
           });
         }
+
         if (!res.ok) {
           let data = {};
           try { data = JSON.parse(errText || "{}"); } catch {}
@@ -344,7 +343,6 @@ export default function SupervisorDashboardV3({ classes = {} }) {
       setLoading(false);
     }
   };
-
 
   const changeStatus = async (row) => {
     const nuevo = (window.prompt("Nuevo estado (APROBADA / RECHAZADA):", row.estado || tab) || "").toUpperCase().trim();

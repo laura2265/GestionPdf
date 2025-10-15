@@ -12,14 +12,16 @@ export const userCreateSchema = z.object({
 });
 
 export const userUpdateSchema = z.object({
-    fullName: z.string().min(3).optional(),
-    phone: z.string().optional()
-})
+  fullName: z.string().min(3).optional(),
+  phone: z.string().optional(),
+  password: z.string().optional(),
+  roleId: z.union([z.string(), z.number()]).optional(), // Int en tu schema
+});
 
 export class UsersService{
 
     static async list({
-        page = 1, size=100, onlyActive = true
+        page = 1, size=300, onlyActive = true
     }){
         const skip = (page - 1) * size;
         const where = onlyActive ? { is_active: true }: undefined;
@@ -88,16 +90,48 @@ export class UsersService{
     });
   }
 
-    static async update(id: number, payload: unknown){
-        const data = userUpdateSchema.parse(payload);
-        return prisma.users.update({
-            where: {id},
-            data: {
-                ...(data.fullName ? {fullName: data.fullName}:{}),
-                ...(data.phone ? {phone: data.phone} : {})
-            }
-        });
+    static async update(id: number, payload: unknown) {
+    const data = userUpdateSchema.parse(payload);
+
+    const updateData: any = {
+      ...(data.fullName ? { full_name: data.fullName } : {}),
+      ...(data.phone ? { phone: data.phone } : {}),
+      ...(data.password ? { password: data.password } : {}),
+    };
+
+    // sin cambio de rol → solo update del usuario
+    if (data.roleId === undefined) {
+      return prisma.users.update({
+        where: { id },
+        data: updateData,
+        include: { user_roles: { include: { roles: true } } },
+      });
     }
+
+    const roleId = Number(data.roleId);
+    if (!Number.isInteger(roleId)) {
+      throw new Error("Invalid roleId");
+    }
+
+    // con cambio de rol → reemplaza asociaciones en user_roles
+    const updated = await prisma.users.update({
+      where: { id },
+      data: {
+        ...updateData,
+        user_roles: {
+          deleteMany: {},                      // limpia roles previos
+          create: {
+            roles: { connect: { id: roleId } } // asigna nuevo rol (Int)
+            // Si prefieres por FK directa y tu modelo lo permite:
+            // role_id: roleId
+          },
+        },
+      },
+      include: { user_roles: { include: { roles: true } } },
+    });
+
+    return updated;
+  }
 
     static async deactivate(id: number){
         return prisma.users.update({
