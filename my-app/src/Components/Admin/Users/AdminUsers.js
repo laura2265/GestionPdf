@@ -140,7 +140,7 @@ export default function AdminUsers() {
                       <td>{a.email}</td>
                       <td>{a.phone}</td>
                       <td>
-                        <button className="btn xs" onClick={()=>{navigate(`/actualizar-user/${a.id}`)}} >Ver</button>
+                        <button className="btn xs" onClick={()=>{navigate(`/listar-user/${a.id}`)}} >Ver</button>
                       </td>
                       <td>
                         <button className="btn xs" onClick={()=>{navigate(`/actualizar-user/${a.id}`)}} >Actualizar</button>

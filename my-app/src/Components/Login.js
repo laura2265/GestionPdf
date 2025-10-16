@@ -70,8 +70,6 @@
         }
       };
 
-
-
       const handleSubmitLogin = async (e) => {
         e.preventDefault();
         const { errors, UserRol, UserId } = await validateFormLogin();

@@ -96,7 +96,6 @@ export class ApplicationsService {
         });
     }
 
-    //Create tecnico y borrador
     static async create(payload: unknown, currentUserId: number) {
       
         await ensureRole(currentUserId, "TECNICO");
@@ -131,7 +130,7 @@ export class ApplicationsService {
             from_status: null,
             to_status: "BORRADOR",
             changed_by: tecnicoId,
-            comment: "Creación de la aplicación"
+            comment: "Creación de la solicitud"
           }
         });
 

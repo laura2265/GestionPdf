@@ -13,6 +13,7 @@ import UploadImage from './Components/Tecnico/UploadImage.js';
 import CrearUser from './Components/Admin/Users/CrearUser.js';
 import AdminUsers from './Components/Admin/Users/AdminUsers.js';
 import ActualizarUser from './Components/Admin/Users/ActualizarUser.js';
+import InformacionUser from './Components/Admin/Users/InformacionUser.js';
 
 function App() {  
   return (
@@ -42,6 +43,12 @@ function App() {
           <Route path='/actualizar-user/:id' element={
             <PrivateRouter allowedRoles={[1]}>
               <ActualizarUser />
+            </PrivateRouter>
+          }/>
+          
+          <Route path='/listar-user/:id' element={
+            <PrivateRouter allowedRoles={[1]}>
+              <InformacionUser />
             </PrivateRouter>
           }/>
          
