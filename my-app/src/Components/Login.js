@@ -1,7 +1,7 @@
   import { useEffect, useState } from 'react';
   import { useNavigate } from 'react-router-dom';
 
-  function Login() {
+  function Login(){
       const navigate = useNavigate();
 
       const [formDataLogin, setFormDataLogin]= useState({

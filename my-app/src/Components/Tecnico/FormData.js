@@ -108,7 +108,9 @@ export default function FormData({ borrador, volver, onDraftSaved }) {
       const newId = Number(data.id || id);
       setId(newId);
       setMsg(`Borrador #${newId} guardado.`);
-      if (goToAttachments) onDraftSaved?.(newId);
+      if (goToAttachments) {
+        navigate(`/upload-docs/${newId}`);
+      }
     } catch (e) {
       setMsg(e.message || "Error al guardar");
     } finally {

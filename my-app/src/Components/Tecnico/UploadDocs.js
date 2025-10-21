@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import imageIcon from '../../assets/img/imagen.png'
 import { useNavigate, useParams } from "react-router-dom";
 
+
 const FIXED_REQUIREMENTS = [
   { kind: "FOTO_FACHADA",                   required: true,  label: "Fachada (Imagen)" },
   { kind: "FOTO_NOMENCLATURA", required: true,  label: "Nomenclatura (Imagen)" },
@@ -161,11 +162,13 @@ export default function UploadDocs({ applicationId: appIdProp, onSubmitted, volv
         await uploadOne(kind, file);
       }
 
-      await submitApp();
-
+      await submitApp();  
       setSelected({});
-      setMsg("Documentos subidos y solicitud enviada.");
-      onSubmitted?.();
+      setMsg("Se envió correctamente.");
+      setTimeout(() => {
+        navigate("/tecnico");
+      }, 1500);
+
     } catch (e) {
       setMsg(e.message || "Error al subir/enviar");
     } finally {

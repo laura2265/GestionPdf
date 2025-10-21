@@ -18,24 +18,15 @@ import { rolesRouter } from './routes/roles.routes.js';
 import { errorHandler } from './middlewares/error-handler.js';
 import { UserRoleRouter } from './routes/user-role.routes.js';
 import path from 'path';
+
 const app = express();
-
-const allowedOrigins =[
-  "https://api.supertv.com.co"
-]
-
-const corsOptions = {
-  origin(origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) {
-    if (!origin) return cb(null, true);
-    cb(null, allowedOrigins.includes(origin));
-  },
-  methods: ["GET", "HEAD", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "x-user-id"],
   exposedHeaders: ["Content-Disposition"],
-  maxAge: 86400,
-};
+}));
 
-app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

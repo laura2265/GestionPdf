@@ -104,9 +104,7 @@ function DashboardAdmin() {
     return Array.isArray(json) ? json : (json.items || []);
   };
 
-
 const navigate = useNavigate();
-
 
   useEffect(() => {
     let alive = true;
@@ -236,7 +234,6 @@ useEffect(() => {
       </div>
     </header>
 
-    {/* GRID PRINCIPAL */}
     <div className="main-grid">
       <div>
         {/* KPIs */}
@@ -348,7 +345,7 @@ useEffect(() => {
         <div className="activity-item" key={i}>
           <div className="avatar">{((h.user?.full_name || 'S')[0] || 'S').toUpperCase()}</div>
           <div>
-            <div><strong>{h.user?.full_name || 'Sistema'}</strong> {h.action || 'actualizó una solicitud'}</div>
+            <div><strong>{h.user?.full_name || 'Sistema'}</strong> {`${h.tostatus}  h.comment `|| 'actualizó una solicitud'}</div>
             <div className="activity-meta">{new Date(h.created_at || Date.now()).toLocaleString()}</div>
           </div>
         </div>

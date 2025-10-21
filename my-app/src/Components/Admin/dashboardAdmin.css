@@ -114,7 +114,6 @@
   margin: 0 0 10px 0; font-size: 14px; color: var(--muted); font-weight: 600; letter-spacing: .2px;
 }
 
-/* grid de gráficos/tablas (columna izquierda del layout) */
 .left-grid{
   display: grid;
   gap: 18px;
@@ -167,7 +166,6 @@
 .activity-meta{ font-size:12px; color: var(--muted); }
 
 .chart { color: var(--sky); }
-/* ====== Helpers ====== */
 .muted{ color: var(--muted); }
 .chart-placeholder{
   height: 260px; border:1px dashed #e5e7eb; border-radius: 14px; display:grid; place-items:center; color:var(--muted);
@@ -214,7 +212,7 @@
 
 .uo-grid {
   display: grid;
-  grid-template-columns: 1.2fr 1fr; /* perfil más ancho */
+  grid-template-columns: 1.2fr 1fr;
   gap: 16px;
 }
 @media (max-width: 900px) {
