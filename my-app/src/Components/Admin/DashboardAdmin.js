@@ -341,11 +341,11 @@ useEffect(() => {
           </div>
     <div className="sectionActividad">
       <h3 className="section-title">Actividad reciente</h3>
-      {(activityHistory || []).slice(0, 8).map((h, i) => (
+      {(activityHistory || []).slice(0, 300).map((h, i) => (
         <div className="activity-item" key={i}>
           <div className="avatar">{((h.user?.full_name || 'S')[0] || 'S').toUpperCase()}</div>
           <div>
-            <div><strong>{h.user?.full_name || 'Sistema'}</strong> {`${h.tostatus}  h.comment `|| 'actualizó una solicitud'}</div>
+            <div><strong>{h.user?.full_name || 'Sistema'}</strong> {`${h.to_status}:  ${ h.comment} `|| 'actualizó una solicitud'}</div>
             <div className="activity-meta">{new Date(h.created_at || Date.now()).toLocaleString()}</div>
           </div>
         </div>

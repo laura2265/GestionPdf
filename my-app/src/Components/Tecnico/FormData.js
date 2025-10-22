@@ -78,12 +78,11 @@ export default function FormData({ borrador, volver, onDraftSaved }) {
     }));
   };
 
-  // NOTA: si id existe => PUT (editar). Si no existe => POST (nueva).
   const saveDraft = async (goToAttachments = true) => {
     setMsg(""); setLoading(true);
     try {
-      const body = { 
-        ...form, 
+      const body = {
+        ...form,
         tecnico_id: tecnicoId,
         estrato_id: Number(form.estrato_id),
       };
@@ -148,9 +147,7 @@ export default function FormData({ borrador, volver, onDraftSaved }) {
           <div className="inputContainer">
             <label className="block text-sm">Tipo de documento</label>
             <select name="tipo_documento" value={form.tipo_documento} onChange={handleChange} required className="w-full border rounded p-2">
-              <option value="CC">Cédula</option>
-              <option value="CE">Cédula Extranjera</option>
-              <option value="PA">Pasaporte</option>
+              <option value="CC">Cédula De Ciudadania</option>
             </select>
           </div>
           <div className="inputContainer">

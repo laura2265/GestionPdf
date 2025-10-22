@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { FilesService } from "../services/files.service.js";
 
-
-// Convierte todos los BigInt a string de forma recursiva
 const sanitizeBigInt = (value: any): any => {
   if (typeof value === "bigint") return value.toString();
   if (Array.isArray(value)) return value.map(sanitizeBigInt);

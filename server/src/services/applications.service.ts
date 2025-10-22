@@ -392,7 +392,6 @@ export class ApplicationsService {
         const have = new Set(files.map((f: KindRec) => String(f.kind)));
         return required.every((r: KindRec) => have.has(String(r.kind)));
     }
-    // applications.service.ts
 
    
     static async updateState(id: number, estado: string, currentUserId: number) {
@@ -400,7 +399,6 @@ export class ApplicationsService {
 
       const upper = String(estado || "").toUpperCase();
 
-      // Map string -> enum (sin $Enums)
       const EST: Record<string, applications_estado> = {
         BORRADOR:  applications_estado.BORRADOR,
         ENVIADA:   applications_estado.ENVIADA,

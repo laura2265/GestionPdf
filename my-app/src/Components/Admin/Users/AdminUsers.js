@@ -1,20 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const API_BASE = "https://api.supertv.com.co"; // ajusta si cambia
-const USERS_PATH = "/api/users"; // <-- endpoint de tu backend
+const API_BASE = "https://api.supertv.com.co";
+const USERS_PATH = "/api/users";
 
 export default function AdminUsers() {
   const navigate = useNavigate();
 
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
-  const [users, setUsers] = useState([]); // siempre array
+  const [users, setUsers] = useState([]); 
   const [error, setError] = useState("");
 
   const fetchUsers = async () => {
-    // Si tu API requiere auth, toma el token
-    const token = localStorage.getItem("authToken");
+  const token = localStorage.getItem("authToken");
 
     const res = await fetch(`${API_BASE}${USERS_PATH}`, {
       method: "GET",
@@ -34,7 +33,6 @@ export default function AdminUsers() {
     }
 
     const result = await res.json();
-    // Acepta varios shapes comunes: [..] o {items:[..]} o {data:[..]}
     const arr = Array.isArray(result)
       ? result
       : result.items || result.data || [];
@@ -64,7 +62,6 @@ export default function AdminUsers() {
     };
   }, []);
 
-  // Normaliza campos para evitar llaves diferentes (full_name/nombre/etc)
   const normalized = useMemo(() => {
     return (users || []).map((u) => ({
       id: u.id ?? u.uuid ?? u._id ?? "",
@@ -99,7 +96,6 @@ export default function AdminUsers() {
         <div className="header-actions">
           <button onClick={volver} className="btn danger">Regresar</button>
           <button onClick={crearUsuario} className="btn primary">Crear Usuario</button>
-          <button className="btn">Cerrar Sesión</button>
         </div>
       </header>
 
