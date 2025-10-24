@@ -148,8 +148,8 @@ static async list(req: AuthedRequest, res: Response, next: NextFunction) {
       const kind = normalizeKind(bodyKind);
       const saved = await ApplicationsService.addFile(appId, userId, {
         kind: kind as any,
-        file_name,
-        storage_path: storagePathPosix,
+        file_name: String(file_name),
+        storage_path: String(storagePathPosix),
         mime_type,
         buffer: req.file.buffer,
         size: req.file.size,
@@ -157,7 +157,18 @@ static async list(req: AuthedRequest, res: Response, next: NextFunction) {
 
       const autoSubmit = (req.body?.auto_submit ?? "false").toString().toLowerCase() === "true";
       if (!autoSubmit) {
-        return res.status(201).json({ file: jsonSafe(saved), submitted: false, url: storageFileAbs });
+        const safeFile = {
+          ...saved,
+          file_name: String(saved.file_name),
+          storage_path: String(saved.storage_path ?? ""),
+        };
+
+        return res.status(201).json({
+          success: true,
+          file: safeFile,
+          submitted: false,
+          url: storageFileAbs,
+        });
       }
 
       try {

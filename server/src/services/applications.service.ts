@@ -325,17 +325,27 @@ export class ApplicationsService {
         data: {
           application_id: app.id,
           kind: file.kind as any,
-          file_name: file.file_name,
+          file_name: String(file.file_name),
           mime_type: file.mime_type ?? null,
           byte_size: file.size,
           data: Buffer.isBuffer(file.buffer) ? file.buffer : Buffer.from(file.buffer),
-          storage_path: file.storage_path ?? null,
-          sha256: file.sha256,
+          storage_path: String(file.storage_path ?? ""),
+          sha256: file.sha256 ?? null,
           uploaded_by: BigInt(currentUserId),
         },
+        select: {
+          id: true,
+          application_id: true,
+          kind: true,
+          file_name: true,
+          mime_type: true,
+          byte_size: true,
+          storage_path: true,
+          uploaded_by: true,
+        }
       });
-    }
 
+    }
 
     static async addPdf(appId: number, currentUserId: number, pdf:{    
         file_name: string,

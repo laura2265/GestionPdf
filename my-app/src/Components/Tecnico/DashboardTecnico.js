@@ -13,7 +13,6 @@ export default function DashboardTecnico() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Datos
   const [applications, setApplications] = useState([]);
   const [draftId, setDraftId] = useState(null);
   const [editingApp, setEditingApp] = useState(null);
@@ -39,7 +38,6 @@ export default function DashboardTecnico() {
         headers: { "x-user-id": String(tecnicoId) },
       });
 
-      // fallback
       if (!res.ok) {
         res = await fetch(`${API_BASE}/api/applications?status=ALL`, {
           headers: { "x-user-id": String(tecnicoId) },
@@ -67,7 +65,6 @@ export default function DashboardTecnico() {
         };
       });
 
-      // Filtrar por tecnicoId en frontend (asegura que sólo se muestren las apps del técnico)
       const onlyMine = mapped.filter((m) => Number(m.tecnico_id) === Number(tecnicoId));
 
       setApplications(onlyMine);
@@ -80,7 +77,6 @@ export default function DashboardTecnico() {
 
   useEffect(() => { fetchApplications(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Filtrado local por estado
   const visibleByState = useMemo(() => {
     return applications.filter((a) => {
       if (filter === "ALL") return true;
