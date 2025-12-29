@@ -15,21 +15,21 @@ const sanitizeBigInt = (value: any): any => {
 export class PdfsController{
     static async list(req:Request, res:Response, next: NextFunction){
         try {
-                const applicationId = Number(req.params.applicationId);
-                if (isNaN(applicationId)) {
-                  return res.status(400).json({ message: "applicationId inválido" });
-                }
-        
-                const files = await PdfsService.list(applicationId);
-                res.json(files);
-              } catch (error) {
-                next(error);
-              }
+          const applicationId = Number(req.params.applicationId);
+          if (isNaN(applicationId)) {
+            return res.status(400).json({ message: "applicationId inválido" });
+          }
+  
+          const files = await PdfsService.list(applicationId);
+          res.json(files);
+
+        } catch (error) {
+          next(error);
+        }
     }
 
     static async  create(req: Request, res: Response, next: NextFunction) {
       try {
-        // Lee userId del header (si lo envías desde el FE)
         const hdr = req.headers["x-user-id"];
         const userId = hdr ? BigInt(String(hdr)) : undefined;
 

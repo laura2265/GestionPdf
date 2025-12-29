@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const API_BASE = "https://api.supertv.com.co";
+const API_BASE = "http://localhost:3000";
 const USERS_PATH = "/api/users";
 
 export default function AdminUsers() {
@@ -141,7 +141,7 @@ export default function AdminUsers() {
                       <td>
                         <button className="btn xs" onClick={()=>{navigate(`/actualizar-user/${a.id}`)}} >Actualizar</button>
                       </td>
-                    </tr>
+                    </tr> 
                   ))}
                   {!filtered.length && (
                     <tr>

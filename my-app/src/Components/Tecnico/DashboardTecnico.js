@@ -5,7 +5,7 @@ import FormData from "./FormData";
 import { useNavigate } from "react-router-dom";
 
 
-const API_BASE = "https://api.supertv.com.co";
+const API_BASE = "http://localhost:3000";
 
 export default function DashboardTecnico() {
   const navigate = useNavigate();
@@ -33,7 +33,6 @@ export default function DashboardTecnico() {
   const fetchApplications = async () => {
     setLoading(true); setError("");
     try {
-      // Intenta pedir filtrado por backend (opcional, si el backend lo soporta)
       let res = await fetch(`${API_BASE}/api/applications?x-user-id=${tecnicoId}`, {
         headers: { "x-user-id": String(tecnicoId) },
       });
@@ -75,7 +74,7 @@ export default function DashboardTecnico() {
     }
   };
 
-  useEffect(() => { fetchApplications(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchApplications(); }, []);
 
   const visibleByState = useMemo(() => {
     return applications.filter((a) => {
@@ -102,7 +101,7 @@ const filtered = useMemo(() => {
       (String(i.documento || "")).toLowerCase().includes(qq) ||
       String(i.tecnico_id).includes(qq)
     );
-  }, [visibleByState, q]);  
+  }, [visibleByState, q]);
 
   const nuevaSolicitud = () => {
     navigate(`/form-tecnico`);

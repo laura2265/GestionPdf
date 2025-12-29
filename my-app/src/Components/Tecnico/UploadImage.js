@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import imageIcon from "./../../assets/img/imagen.png";
 import { useNavigate, useParams } from "react-router-dom";
-const API_BASE = "https://api.supertv.com.co";
+const API_BASE = "http://localhost:3000";
 
 const DEFAULT_FIELDS = [
   { kind: "frente", label: "Foto de documento (frente)" },
@@ -15,7 +15,7 @@ const KIND_ALIAS = {
   FOTO_TEST_VELOCIDAD: "reverso",
   FOTO_NOMENCLATURA: "reverso",
   FOTO_FACHADA: "selfie",
-  SELFIE: "selfie",
+  SELFIE: "selfie", 
 };
 
 const FRONT_TO_BACK = {

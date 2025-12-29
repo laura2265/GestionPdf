@@ -60,7 +60,7 @@ function DashboardAdmin() {
   const [q, setQ] = useState("");
 
   const fetchUsers = async () => {
-    const res = await fetch('https://api.supertv.com.co/api/users');
+    const res = await fetch('http://localhost:3000/api/users');
     if (!res.ok) throw new Error('Error al consultar usuarios');
     const json = await res.json();
     return Array.isArray(json) ? json : (json.items || []);
@@ -92,7 +92,7 @@ function DashboardAdmin() {
 
 
   const fetchAppsForUser = async (idUser) => {
-    const res = await fetch('https://api.supertv.com.co/api/applications', {
+    const res = await fetch('http://localhost:3000/api/applications', {
       method: 'GET',
       headers: {
         'x-user-id': idUser,
@@ -161,7 +161,7 @@ useEffect(() => {
   let alive = true;
   (async () => {
     try {
-      const res = await fetch('https://api.supertv.com.co/api/history/', { method: 'GET' });
+      const res = await fetch('http://localhost:3000/api/history/', { method: 'GET' });
       if (!res.ok) throw new Error('Error al consultar el historial de tareas');
       const json = await res.json();
       const items = Array.isArray(json) ? json : (json.items || []);
@@ -214,11 +214,21 @@ useEffect(() => {
   const Usuarios=()=>{
     navigate("/admin-users")
   }
+
+  const smartOlt = () =>{
+    navigate('/smartolt-admin')
+  }
   return (
   <div className="dashboard-container">
     <header className="dashboard-header">
       <h1 className="dashboard-title">Panel Administrativo</h1>
       <div className='header-actions'>
+        <button
+          className="btn danger"
+          onClick={smartOlt}
+        >
+          SmartOlt
+        </button>
         <button
           className="btn danger"
           onClick={Usuarios} 

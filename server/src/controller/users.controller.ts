@@ -33,7 +33,7 @@ export class UsersController{
 
         return res.json(resultWithStringIds);
       } catch (err) {
-        console.error('UsersController.list error:', err); // <— log
+        console.error('UsersController.list error:', err);
         return next(err);
       }
     }

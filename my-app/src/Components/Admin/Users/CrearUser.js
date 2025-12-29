@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom"
 
-const API_BASE = "https://api.supertv.com.co"
+const API_BASE = "http://localhost:3000"
 
 function CrearUser(){
     const navigate = useNavigate();

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 
-const API_BASE = "https://api.supertv.com.co";
+const API_BASE = "http://localhost:3000";
 
 export default function InformacionUser() {
   const { id } = useParams();

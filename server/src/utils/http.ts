@@ -6,7 +6,6 @@ export function getBaseUrl(req: Request) {
   return `${proto}://${host}`;
 }
 
-// devuelve URL absoluta (o cambia a relativa si prefieres)
 export function publicFileUrl(req: Request, id: string | number | bigint) {
   return `${getBaseUrl(req)}/files/raw/${String(id)}`;
 }

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import "./detallesSoli.css";
 
-const API_BASE = "https://api.supertv.com.co";
+const API_BASE = "http://localhost:3000";
 const cx = (...a) => a.filter(Boolean).join(" ");
 const first = (...xs) => xs.find(v => v !== undefined && v !== null && String(v).trim() !== "");
 

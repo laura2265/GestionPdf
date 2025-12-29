@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import './tecnico.css'
 import { useNavigate, useParams } from "react-router-dom";
-const API_BASE ="https://api.supertv.com.co";
+const API_BASE ="http://localhost:3000";
 
 export default function FormData({ borrador, volver, onDraftSaved }) {
   const navigate = useNavigate();

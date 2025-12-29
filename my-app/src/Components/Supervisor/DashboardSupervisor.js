@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import './supervisor.css'
 
-const API_BASE ="https://api.supertv.com.co";
+const API_BASE ="http://localhost:3000";
 const cx = (...a) => a.filter(Boolean).join(" ");
 
 const FIXED_REQUIREMENTS = [

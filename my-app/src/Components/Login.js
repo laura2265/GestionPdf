@@ -27,7 +27,11 @@
         if (Object.keys(errors).length) return { errors, UserRol, UserId };
 
         try {
-          const resUsers = await fetch('https://api.supertv.com.co/api/users', { method: 'GET' });
+          const resUsers = await fetch('http://localhost:3000/api/users', { 
+            method: 'GET',
+            mode: "cors",
+            cache: "no-store", 
+          });
           if (!resUsers.ok) throw new Error('Error al traer los usuarios');
         
           const data = await resUsers.json();
@@ -49,7 +53,7 @@
             return { errors, UserRol, UserId };
           }
         
-          const resRole = await fetch('https://api.supertv.com.co/api/user-role', {
+          const resRole = await fetch('http://localhost:3000/api/user-role', {
             method: 'GET',
             headers: { 'x-user-id': String(user.id) },
           });

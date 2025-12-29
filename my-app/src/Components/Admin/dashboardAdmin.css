@@ -103,7 +103,11 @@
 .section, .sectionTable{ min-height: 0; }
 .sectionActividad{
   overflow-y: auto;
-  height: auto;
+}
+
+.sectionActividad{
+  max-height: 300px;
+  margin: 0;
 }
 .sectionTable{
   height: auto;           
@@ -232,7 +236,12 @@
 
 .uo-history-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .uo-filters { display: flex; gap: 8px; flex-wrap: wrap; }
-.uo-filters input, .uo-filters select { height: 36px; padding: 0 10px; border: 1px solid #e4e6eb; border-radius: 8px; }
+.uo-filters input, .uo-filters select { 
+  height: 36px; 
+  padding: 0 10px; 
+  border: 1px solid #e4e6eb; 
+  border-radius: 8px; 
+}
 
 .uo-table-wrap { overflow: auto; }
 .uo-table { width: 100%; border-collapse: collapse; }

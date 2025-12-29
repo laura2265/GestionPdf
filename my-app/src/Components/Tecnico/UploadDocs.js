@@ -17,7 +17,7 @@ const KIND_ACCEPT = {
   ORDEN_TRABAJO: "image/*",
 };
 
-const API_BASE = "https://api.supertv.com.co";
+const API_BASE = "http://localhost:3000";
 
 export default function UploadDocs({ applicationId: appIdProp, onSubmitted, volver }) {
   const { id } = useParams();
@@ -150,6 +150,7 @@ export default function UploadDocs({ applicationId: appIdProp, onSubmitted, volv
       const missingNow = requiredKinds.filter(
         (rk) => !uploadedKinds.has(rk) && !selected[rk]
       );
+
       if (missingNow.length) {
         const labels = FIXED_REQUIREMENTS.filter((r) => missingNow.includes(r.kind))
           .map((r) => r.label)
@@ -162,12 +163,12 @@ export default function UploadDocs({ applicationId: appIdProp, onSubmitted, volv
         await uploadOne(kind, file);
       }
 
-      await submitApp();  
-      setSelected({});
-      setMsg("Se envió correctamente.");
-      setTimeout(() => {
-        navigate("/tecnico");
-      }, 1500);
+      await submitApp();
+        setSelected({});
+        setMsg("Se envió correctamente.");
+        setTimeout(() => {
+          navigate("/tecnico");
+        }, 1500);
 
     } catch (e) {
       setMsg(e.message || "Error al subir/enviar");
@@ -184,12 +185,13 @@ export default function UploadDocs({ applicationId: appIdProp, onSubmitted, volv
         {FIXED_REQUIREMENTS.map((r) => {
           const done = uploadedKinds.has(r.kind);
           const accept = KIND_ACCEPT[r.kind];
+
           return (
             <li key={r.kind} className="upload-item">
               <div className="label">
                 <span>{r.label}</span> <strong>{r.required === true?"(Requerido)": "(Opcional)"}</strong> 
               </div>
-                      
+
               <div
                 className="drop-zone"
                 onDragOver={(e) => e.preventDefault()}
@@ -199,6 +201,7 @@ export default function UploadDocs({ applicationId: appIdProp, onSubmitted, volv
                 }}
                 onClick={() => document.getElementById(`file-${r.kind}`).click()} 
               >
+
                 {selected[r.kind] ? (
                   <div className="file-preview">
                     {selected[r.kind].type.includes("pdf") ? (  
@@ -221,7 +224,6 @@ export default function UploadDocs({ applicationId: appIdProp, onSubmitted, volv
                 />
               </div>
             </li>
-
           );
         })}
       </ol>
@@ -246,9 +248,9 @@ export default function UploadDocs({ applicationId: appIdProp, onSubmitted, volv
             }}
           >
             Volver
-          </button>
-        </div>
+        </button>
 
+        </div>
       {msg && <p className="mt-3 text-sm">{msg}</p>}
     </div>
   );

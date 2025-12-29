@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-// Ajusta a tu backend
-const API_BASE = "https://api.supertv.com.co";
+const API_BASE = "http://localhost:3000";
 
 
 
