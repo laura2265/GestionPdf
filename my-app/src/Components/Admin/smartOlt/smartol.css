@@ -57,3 +57,33 @@
     margin: 1rem 1rem;
 }
 
+.status-icon {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+td .status-icon {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* ONLINE */
+.status-icon.online {
+  color: #2ecc71; /* verde */
+}
+
+/* POWER FAILED */
+.status-icon.power-failed {
+  color: #95a5a6; /* gris */
+}
+
+/* LOS */
+.status-icon.los {
+  color: #e74c3c; /* rojo */
+}
+
+/* DESCONOCIDO */
+.status-icon.unknown {
+  color: #f1c40f; /* amarillo */
+}

@@ -5,9 +5,7 @@ if (process.env.NODE_ENV !== "production") {
 import express from "express";
 import cors from "cors";
 import path from "path";
-
 import { maybeAuth } from "./middlewares/auth.js";
-
 import { usersRouter } from "./routes/users.routes.js";
 import { ApplicationsRouter } from "./routes/applications.routes.js";
 import { filesRouter } from "./routes/files.routes.js";
@@ -21,6 +19,7 @@ import { UserRoleRouter } from "./routes/user-role.routes.js";
 import { errorHandler } from "./middlewares/error-handler.js";
 import { getBaseUrl } from "./utils/http.js";
 import { WebSocketServer } from "ws";
+import { smartOltRouter } from "./routes/smartOlts.routes.js";
 
 const app = express();
 app.set("trust proxy", true);
@@ -67,6 +66,7 @@ app.use("/api/audit", AuditRouter);
 app.use("/api/estrato", estratoRouter);
 app.use("/api/roles", rolesRouter);
 app.use("/api/user-role", UserRoleRouter);
+app.use("/api/smart-olt/", smartOltRouter)
 
 app.get("/health", (_req, res) =>
   res.json({ ok: true, env: process.env.NODE_ENV, marker: "APP-LOCAL-WS" })
@@ -83,7 +83,7 @@ app.get("/debug-url", (req, res) => {
 });
 
 app.use(errorHandler);
-const PORT = Number(process.env.PORT || 3000);
+const PORT = parseInt((process.env.PORT ?? "").trim(), 10) || 3000;
 
 const server = app.listen(PORT, () => {
   console.log(`API on :${PORT}`);
