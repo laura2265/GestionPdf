@@ -66,7 +66,11 @@ app.use("/api/audit", AuditRouter);
 app.use("/api/estrato", estratoRouter);
 app.use("/api/roles", rolesRouter);
 app.use("/api/user-role", UserRoleRouter);
-app.use("/api/smart-olt/", smartOltRouter)
+
+
+// Smart Olt
+app.use("/api/smart-olt", smartOltRouter)
+
 
 app.get("/health", (_req, res) =>
   res.json({ ok: true, env: process.env.NODE_ENV, marker: "APP-LOCAL-WS" })

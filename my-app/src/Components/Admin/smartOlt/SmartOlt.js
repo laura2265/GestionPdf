@@ -21,7 +21,6 @@ function SmartOlt() {
 
   const [onus, setOnus] = useState([]);
 
-  // filtros UI
   const [q, setQ] = useState("");
   const [fOlt, setFOlt] = useState("");
   const [fBoard, setFBoard] = useState("");
@@ -55,7 +54,7 @@ function SmartOlt() {
         setLoading(false);
       }
     };
-
+    
     fetchSmartOlts();
   }, []);
 
@@ -203,6 +202,18 @@ function SmartOlt() {
         >
           Limpiar
         </button>
+        <button
+          className="btn"
+          onClick={() => {
+            const params = new URLSearchParams();
+            if (q.trim()) params.set("q", q.trim());
+          
+            window.open(`http://localhost:3000/api/smart-olt/report/pdf?${params.toString()}`, "_blank");
+          }}
+        >
+          Generar PDF
+        </button>
+
       </div>
 
       <div className="contentTableSmartOlt">
