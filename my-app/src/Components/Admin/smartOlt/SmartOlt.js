@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import "./smartol.css";
 import { useEffect, useMemo, useState } from "react";
 import { ImConnection } from "react-icons/im";
@@ -72,12 +72,10 @@ function SmartOlt() {
     };
   }, [onus]);
 
-  // filtro de ONUs
   const filteredOnus = useMemo(() => {
     const term = q.trim().toLowerCase();
 
     return onus.filter((o) => {
-      // filtros por select
       if (fOlt) {
         const val = String(o?.olt_id ?? o?.olt_name ?? "");
         if (val !== fOlt) return false;
@@ -163,7 +161,7 @@ function SmartOlt() {
           {options.boards.map((v) => (
             <option key={v} value={v}>{v}</option>
           ))}
-        </select>
+        </select> 
 
         <label>Port</label>
         <select value={fPort} onChange={(e) => setFPort(e.target.value)}>
@@ -260,7 +258,7 @@ function SmartOlt() {
                   <td>{tv || "-"}</td>
                   <td>{o?.authorization_date ?? "-"}</td>
                   <td className="options">
-                    <button onClick={() => console.log("ver", o)}>ver</button>
+                    <Link  to={`/smartolt-info-admin/${o?.unique_external_id}`}>ver</Link>
                     <button onClick={() => console.log("reporte", o)}>Generar reporte</button>
                   </td>
                 </tr>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 
 const API_BASE = "http://localhost:3000";
@@ -160,7 +160,6 @@ const Usuarios=()=>{
         </section>
       </div>
 
-      {/* HISTORIAL */}
       <section className="card uo-history">
         <div className="uo-history-head">
           <h2>Historial </h2>

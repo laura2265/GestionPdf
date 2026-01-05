@@ -15,6 +15,7 @@ import AdminUsers from './Components/Admin/Users/AdminUsers.js';
 import ActualizarUser from './Components/Admin/Users/ActualizarUser.js';
 import InformacionUser from './Components/Admin/Users/InformacionUser.js';
 import SmartOlt from './Components/Admin/smartOlt/SmartOlt.js';
+import InformacionIdExternal from './Components/Admin/smartOlt/InformacionId.js';
 
 function App() {  
   return (
@@ -34,6 +35,12 @@ function App() {
           <Route path='/smartolt-admin' element={
             <PrivateRouter allowedRoles={[1]}>
               <SmartOlt />
+            </PrivateRouter>
+          }/>
+
+          <Route path='/smartolt-info-admin/:id' element={
+            <PrivateRouter allowedRoles={[1]}>
+              <InformacionIdExternal />
             </PrivateRouter>
           }/>
 

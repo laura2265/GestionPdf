@@ -2,6 +2,26 @@ import { Router } from "express";
 import puppeteer from "puppeteer";
 export const smartOltRouter = Router();
 
+
+async function fetchImage(url: string) {
+  const resp = await fetch(url, {
+    method: "GET",
+    headers: {
+      "X-Token": tokenSmart ?? "",
+      Accept: "image/*",
+    },
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    return { ok: false, status: resp.status, text };
+  }
+
+  const contentType = resp.headers.get("content-type") || "image/png";
+  const ab = await resp.arrayBuffer();
+  return { ok: true, contentType, buffer: Buffer.from(ab) };
+}
+
 const tokenSmart = process.env.SMART_OLT_TOKEN;
 const baseUrl = "https://supertv.smartolt.com/api";
 
@@ -167,34 +187,24 @@ smartOltRouter.get("/details-onu-id/:id", async (req, res, next) => {
 // GET /api/smart-olt/graffic-signal-onu-id/123/day
 smartOltRouter.get("/graffic-signal-onu-id/:id/:tipo", async (req, res, next) => {
   try {
-    if (!tokenSmart) {
-      return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
-    }
+    if (!tokenSmart) return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
 
     const { id, tipo } = req.params;
-    const refresh = req.query.refresh === "true";
 
-    const r = await fetchWithCache(
-      `signal:${id}:${tipo}`,
-      `${baseUrl}/onu/get_onu_signal_graph/${encodeURIComponent(id)}/${encodeURIComponent(tipo)}`,
-      { refresh }
-    );
+    const url = `${baseUrl}/onu/get_onu_signal_graph/${encodeURIComponent(id)}/${encodeURIComponent(tipo)}`;
+
+    const r = await fetchImage(url);
 
     if (!r.ok) {
       return res.status(r.status ?? 500).json({
-        message: "Error con SmartOLT",
-        body: r.data,
+        message: "Error con SmartOLT (signal graph)",
+        body: r.text ?? null,
       });
     }
 
-    return res.json({
-      status: true,
-      data: r.data,
-      _cached: r.fromCache,
-      _cachedAt: r.cachedAt ? new Date(r.cachedAt).toISOString() : null,
-      _note: r.note,
-      _smartOltError: r.smartOltError,
-    });
+    res.setHeader("Content-Type", r.contentType);
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).send(r.buffer);
   } catch (e) {
     next(e);
   }
@@ -203,34 +213,24 @@ smartOltRouter.get("/graffic-signal-onu-id/:id/:tipo", async (req, res, next) =>
 // GET /api/smart-olt/graffic-trafico-onu-id/123/day
 smartOltRouter.get("/graffic-trafico-onu-id/:id/:tipo", async (req, res, next) => {
   try {
-    if (!tokenSmart) {
-      return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
-    }
+    if (!tokenSmart) return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
 
     const { id, tipo } = req.params;
-    const refresh = req.query.refresh === "true";
 
-    const r = await fetchWithCache(
-      `traffic:${id}:${tipo}`,
-      `${baseUrl}/onu/get_onu_traffic_graph/${encodeURIComponent(id)}/${encodeURIComponent(tipo)}`,
-      { refresh }
-    );
+    const url = `${baseUrl}/onu/get_onu_traffic_graph/${encodeURIComponent(id)}/${encodeURIComponent(tipo)}`;
+
+    const r = await fetchImage(url);
 
     if (!r.ok) {
       return res.status(r.status ?? 500).json({
-        message: "Error con SmartOLT",
-        body: r.data,
+        message: "Error con SmartOLT (traffic graph)",
+        body: r.text ?? null,
       });
     }
 
-    return res.json({
-      status: true,
-      data: r.data,
-      _cached: r.fromCache,
-      _cachedAt: r.cachedAt ? new Date(r.cachedAt).toISOString() : null,
-      _note: r.note,
-      _smartOltError: r.smartOltError,
-    });
+    res.setHeader("Content-Type", r.contentType);
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).send(r.buffer);
   } catch (e) {
     next(e);
   }
@@ -280,7 +280,6 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
 
     const refresh = req.query.refresh === "true";
 
-    // Traer ONUs desde cache / SmartOLT
     const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
 
     if (!r.ok) {
