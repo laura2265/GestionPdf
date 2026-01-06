@@ -35,7 +35,7 @@ function InformacionIdExternal() {
   const navigate = useNavigate();
   const { id } = useParams();
 
-  const menu = () => navigate("/admin");
+  const menu = () => navigate("/smartolt-admin");
   const cerrarSesion = () => {
     localStorage.removeItem("auth");
     window.location.href = "/";
@@ -55,7 +55,6 @@ function InformacionIdExternal() {
   const [signalImgUrl, setSignalImgUrl] = useState("");
   const [traficoImgUrl, setTraficoImgUrl] = useState("");
 
-  // 1) DETALLES (tu JSON real trae onu_details)
   useEffect(() => {
     const run = async () => {
       try {
@@ -83,7 +82,6 @@ function InformacionIdExternal() {
     if (id) run();
   }, [id]);
 
-  // 2) SEÑAL (IMAGEN)
   useEffect(() => {
     let mounted = true;
     let createdUrl = "";
@@ -103,7 +101,6 @@ function InformacionIdExternal() {
           return;
         }
 
-        // liberar anterior
         if (signalImgUrl) URL.revokeObjectURL(signalImgUrl);
 
         createdUrl = imgUrl;
@@ -125,10 +122,8 @@ function InformacionIdExternal() {
       mounted = false;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, tipoSignal]);
 
-  // 3) TRÁFICO (IMAGEN)
   useEffect(() => {
     let mounted = true;
     let createdUrl = "";
@@ -169,7 +164,6 @@ function InformacionIdExternal() {
       mounted = false;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, tipoTrafico]);
 
   const generarReporteONU = () => {
@@ -178,6 +172,8 @@ function InformacionIdExternal() {
       "_blank"
     );
   };
+
+
 
   const headerTitle = details?.name
     ? `ONU: ${details.name}`
@@ -207,14 +203,11 @@ function InformacionIdExternal() {
       {loading && <p style={{ marginTop: 10 }}>Cargando detalle...</p>}
       {error && <p style={{ color: "red", marginTop: 10 }}>{error}</p>}
 
-      {/* INFO */}
       <div className="onu-grid">
-        {/* INFO tipo SmartOLT */}
         <div className="onu-summary">
           <div className="onu-summary-card">
             <div className="onu-summary-cols">
         
-              {/* LEFT */}
               <div className="onu-summary-col">
                 <h3 className="onu-summary-title">ONU Info</h3>
         
@@ -224,7 +217,6 @@ function InformacionIdExternal() {
                   <div className="onu-row"><span>Port</span><b>{details?.port ?? "-"}</b></div>
                   <div className="onu-row"><span>ONU</span><b>{details?.onu ?? "-"}</b></div>
         
-                  {/* si no existe gpon_channel en tu JSON, lo construimos */}
                   <div className="onu-row">
                     <span>GPON channel</span>
                     <b>{`gpon-onu_1/${details?.board ?? "-"}/${details?.port ?? "-"}:${details?.onu ?? "-"}`}</b>
@@ -235,13 +227,12 @@ function InformacionIdExternal() {
                   <div className="onu-row"><span>Zone</span><b>{details?.zone_name ?? "-"}</b></div>
                   <div className="onu-row"><span>ODB (Splitter)</span><b>{details?.odb_name ?? "-"}</b></div>
                   <div className="onu-row"><span>Name</span><b>{details?.name ?? "-"}</b></div>
-                  <div className="onu-row"><span>Address / comment</span><b>{details?.address ?? "-"}</b></div>
+                  <div className="onu-row"><span>Address / comment</span><b>{details?.address}</b></div>
                   <div className="onu-row"><span>Authorization date</span><b>{details?.authorization_date ?? "-"}</b></div>
                   <div className="onu-row"><span>ONU external ID</span><b>{details?.unique_external_id ?? "-"}</b></div>
                 </div>
               </div>
-        
-              {/* RIGHT */}
+
               <div className="onu-summary-col">
                 <h3 className="onu-summary-title">Status & Services</h3>
         
@@ -252,8 +243,7 @@ function InformacionIdExternal() {
                       {details?.status ?? "-"}
                     </b>
                   </div>
-        
-                  {/* Señal: tu JSON trae 1310 y 1490 */}
+
                   <div className="onu-row">
                     <span>ONU/OLT Rx signal</span>
                     <b>

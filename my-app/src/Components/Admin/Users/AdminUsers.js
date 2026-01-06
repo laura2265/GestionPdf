@@ -118,7 +118,7 @@ export default function AdminUsers() {
         {!loading && !error && (
           <div className="table-wrap">
             <div className="contentTable">
-              <table className="table">
+              <table className="table"> 
                 <thead>
                   <tr>
                     <th>ID</th>
@@ -150,6 +150,7 @@ export default function AdminUsers() {
                       </td>
                     </tr>
                   )}
+
                 </tbody>
               </table>
             </div>

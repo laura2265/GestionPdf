@@ -17,7 +17,7 @@ export default function InformacionUser() {
   const [history, setHistory] = useState([]);
 
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState("");    
+  const [status, setStatus] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 

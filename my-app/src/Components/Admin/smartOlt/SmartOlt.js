@@ -5,8 +5,6 @@ import { ImConnection } from "react-icons/im";
 import { AiOutlineDisconnect } from "react-icons/ai";
 import { VscDebugDisconnect } from "react-icons/vsc";
 
-
-
 function SmartOlt() {
   const navigate = useNavigate();
 
@@ -54,7 +52,7 @@ function SmartOlt() {
         setLoading(false);
       }
     };
-    
+
     fetchSmartOlts();
   }, []);
 
@@ -73,37 +71,42 @@ function SmartOlt() {
   }, [onus]);
 
   const filteredOnus = useMemo(() => {
-    const term = q.trim().toLowerCase();
+  const term = q.trim().toLowerCase();
 
-    return onus.filter((o) => {
-      if (fOlt) {
-        const val = String(o?.olt_id ?? o?.olt_name ?? "");
-        if (val !== fOlt) return false;
-      }
-      if (fBoard && String(o?.board ?? "") !== fBoard) return false;
-      if (fPort && String(o?.port ?? "") !== fPort) return false;
-      if (fZone && String(o?.zone_name ?? "") !== fZone) return false;
-      if (fOdb && String(o?.odb_name ?? "") !== fOdb) return false;
+  return onus.filter((o) => {
+    const addr = String(o?.address ?? "").trim().toLowerCase();
+    if (!addr.includes("mintic")) return false;
 
-      if (term) {
-        const haystack = [
-          o?.name,
-          o?.sn,
-          o?.unique_external_id,
-          o?.ip_address,
-          o?.zone_name,
-          o?.odb_name,
-          o?.address, 
-        ]
-          .map((v) => String(v ?? "").toLowerCase())
-          .join(" | ");
 
-        if (!haystack.includes(term)) return false;
-      }
+    if (fOlt) {
+      const val = String(o?.olt_id ?? o?.olt_name ?? "");
+      if (val !== fOlt) return false;
+    }
 
-      return true;
-    });
-  }, [onus, q, fOlt, fBoard, fPort, fZone, fOdb]);
+    if (fBoard && String(o?.board ?? "") !== fBoard) return false;
+    if (fPort && String(o?.port ?? "") !== fPort) return false;
+    if (fZone && String(o?.zone_name ?? "") !== fZone) return false;
+    if (fOdb && String(o?.odb_name ?? "") !== fOdb) return false;
+
+    if (term) {
+      const haystack = [
+        o?.name,
+        o?.sn,
+        o?.unique_external_id,
+        o?.ip_address,
+        o?.zone_name,
+        o?.odb_name,
+        o?.address,
+      ]
+        .map((v) => String(v ?? "").toLowerCase())
+        .join(" | ");
+
+      if (!haystack.includes(term)) return false;
+    }
+
+    return true;
+  });
+}, [onus, q, fOlt, fBoard, fPort, fZone, fOdb]);
 
 
     const StatusIcon = ({ status }) => {
@@ -161,7 +164,7 @@ function SmartOlt() {
           {options.boards.map((v) => (
             <option key={v} value={v}>{v}</option>
           ))}
-        </select> 
+        </select>
 
         <label>Port</label>
         <select value={fPort} onChange={(e) => setFPort(e.target.value)}>
@@ -170,7 +173,6 @@ function SmartOlt() {
             <option key={v} value={v}>{v}</option>
           ))}
         </select>
-
         <label>Zona</label>
         <select value={fZone} onChange={(e) => setFZone(e.target.value)}>
           <option value="">Any</option>
@@ -258,8 +260,7 @@ function SmartOlt() {
                   <td>{tv || "-"}</td>
                   <td>{o?.authorization_date ?? "-"}</td>
                   <td className="options">
-                    <Link  to={`/smartolt-info-admin/${o?.unique_external_id}`}>ver</Link>
-                    <button onClick={() => console.log("reporte", o)}>Generar reporte</button>
+                    <button><Link className="ver"  to={`/smartolt-info-admin/${o?.unique_external_id}`}>ver</Link></button>
                   </td>
                 </tr>
               );
