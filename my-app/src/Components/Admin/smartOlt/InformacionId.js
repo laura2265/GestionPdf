@@ -173,8 +173,6 @@ function InformacionIdExternal() {
     );
   };
 
-
-
   const headerTitle = details?.name
     ? `ONU: ${details.name}`
     : `Detalle ONU (${id})`;

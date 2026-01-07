@@ -96,12 +96,11 @@ async function fetchWithCache(
     };
   }
 
-  // ok: guardamos cache
   setCached(key, data);
   return { ok: true, fromCache: false, cachedAt: Date.now(), data };
 }
 
-// ====================== ROUTES ======================
+
 
 smartOltRouter.get("/onu-get", async (req, res, next) => {
   try {
@@ -150,7 +149,6 @@ smartOltRouter.get("/onu-get", async (req, res, next) => {
 });
 
 
-// GET /api/smart-olt/details-onu-id/123?refresh=true
 smartOltRouter.get("/details-onu-id/:id", async (req, res, next) => {
   try {
     if (!tokenSmart) {
@@ -187,7 +185,6 @@ smartOltRouter.get("/details-onu-id/:id", async (req, res, next) => {
   }
 });
 
-// GET /api/smart-olt/graffic-signal-onu-id/123/day
 smartOltRouter.get("/graffic-signal-onu-id/:id/:tipo", async (req, res, next) => {
   try {
     if (!tokenSmart) return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
@@ -213,7 +210,6 @@ smartOltRouter.get("/graffic-signal-onu-id/:id/:tipo", async (req, res, next) =>
   }
 });
 
-// GET /api/smart-olt/graffic-trafico-onu-id/123/day
 smartOltRouter.get("/graffic-trafico-onu-id/:id/:tipo", async (req, res, next) => {
   try {
     if (!tokenSmart) return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
@@ -239,7 +235,6 @@ smartOltRouter.get("/graffic-trafico-onu-id/:id/:tipo", async (req, res, next) =
   }
 });
 
-// GET /api/smart-olt/velocidad-onu-id/123
 smartOltRouter.get("/velocidad-onu-id/:id", async (req, res, next) => {
   try {
     if (!tokenSmart) {
@@ -282,7 +277,6 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
     const refresh = req.query.refresh === "true";
 
     const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
-
     if (!r.ok) {
       return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
     }
@@ -298,19 +292,22 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
       return "unknown";
     };
 
-    // ✅ SOLO MINTIC (comentario/address)
-    const minticOnus = onus.filter((o: any) =>
-      String(o?.address ?? o?.comment ?? "").toLowerCase().includes("mintic")
-    );
+    const getComment = (o: any) => String(o?.address ?? o?.comment ?? "").trim();
+    const getUpz = (o: any) => {
+      const c = getComment(o).toLowerCase();
+      if (c.includes("lf3grp1")) return "Lucero";
+      if (c.includes("lf3grp2")) return "Tesoro";
+      return "Otras";
+    };
 
-    // ✅ counts SOLO sobre MINTIC
+    const minticOnus = onus.filter((o: any) => getComment(o).toLowerCase().includes("mintic"));
+
     const counts = { total: minticOnus.length, online: 0, los: 0, power_failed: 0, unknown: 0 };
     for (const o of minticOnus) counts[bucket(o?.status)]++;
 
     const q = String(req.query.q ?? "").trim().toLowerCase();
     const statusQ = String(req.query.status ?? "").trim().toLowerCase();
 
-    // ✅ filtros SOLO dentro del subset MINTIC
     const filtered = minticOnus.filter((o: any) => {
       if (statusQ && norm(o?.status) !== statusQ) return false;
       if (!q) return true;
@@ -318,12 +315,15 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
       const hay = [
         o?.name, o?.sn, o?.unique_external_id, o?.ip_address,
         o?.zone_name, o?.odb_name, o?.address, o?.olt_name
-      ].map((v:any)=>String(v??"").toLowerCase()).join(" | ");
+      ].map((v: any) => String(v ?? "").toLowerCase()).join(" | ");
 
       return hay.includes(q);
     });
 
-    // ✅ PAGINACIÓN para NO limitar a 2000
+    const lucero = filtered.filter((o: any) => getUpz(o) === "Lucero");
+    const tesoro = filtered.filter((o: any) => getUpz(o) === "Tesoro");
+    const otras  = filtered.filter((o: any) => getUpz(o) === "Otras");
+
     const PAGE_SIZE = 2000;
 
     const chunk = <T,>(arr: T[], size: number) => {
@@ -332,9 +332,6 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
       return out;
     };
 
-    const pages = chunk(filtered, PAGE_SIZE);
-
-    // ✅ HTML: header + (N) tablas con page-break
     const now = new Date();
 
     const renderRow = (o: any) => {
@@ -359,121 +356,151 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
           <td>${sp?.vlan ?? "-"}</td>
           <td>${o?.onu_signal_value ?? o?.signal_1310 ?? "-"}</td>
           <td>${o?.authorization_date ?? "-"}</td>
-          <td>${o?.address ?? o?.comment ?? "-"}</td>
+          <td>${getComment(o) || "-"}</td>
+          <td>${getUpz(o)}</td>
         </tr>
       `;
     };
 
-    const renderTable = (rows: any[], pageIndex: number) => `
-      <div class="page-block">
-        <div class="page-meta">
-          Página <b>${pageIndex + 1}</b> de <b>${pages.length}</b>
-          — Filas en esta página: <b>${rows.length}</b>
-        </div>
+    const renderSection = (title: string, arr: any[]) => {
+      const pages = chunk(arr, PAGE_SIZE);
 
-        <table>
-          <thead>
-            <tr>
-              <th>Estado</th>
-              <th>Nombre</th>
-              <th>SN</th>
-              <th>OLT</th>
-              <th>Board/Port/ONU</th>
-              <th>Zona</th>
-              <th>ODB</th>
-              <th>VLAN</th>
-              <th>Signal 1310</th>
-              <th>Auth</th>
-              <th>Comentario</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map(renderRow).join("")}
-          </tbody>
-        </table>
-      </div>
-    `;
+      return `
+        <div class="section">
+          <h2 class="section-title">${title} <span class="section-count">(${arr.length})</span></h2>
+          ${pages.map((rows, idx) => `
+            <div class="page-block">
+              <div class="page-meta">
+                ${title} — Página <b>${idx + 1}</b> de <b>${pages.length}</b>
+                — Filas: <b>${rows.length}</b>
+              </div>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th>Estado</th>
+                    <th>Nombre</th>
+                    <th>SN</th>
+                    <th>OLT</th>
+                    <th>Board/Port/ONU</th>
+                    <th>Zona</th>
+                    <th>ODB</th>
+                    <th>VLAN</th>
+                    <th>Signal 1310</th>
+                    <th>Auth</th>
+                    <th>Comentario</th>
+                    <th>UPZ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map(renderRow).join("")}
+                </tbody>
+              </table>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    };
 
     const html = `
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Reporte SmartOLT (MINTIC)</title>
-  <style>
-    *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
-    body{ margin:24px; color:#111; }
-    .top{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
-    h1{ margin:0; font-size:20px; }
-    .meta{ color:#666; font-size:12px; margin-top:6px; }
-    .cards{ margin-top:14px; display:grid; grid-template-columns: repeat(5, 1fr); gap:10px; }
-    .card{ border-radius:14px; padding:10px 12px; background:#fff; border:1px solid #eee; }
-    .card b{ display:block; font-size:20px; margin-top:4px; }
-    .total{ border-left:6px solid #111; }
-    .ok{ border-left:6px solid #2ecc71; }
-    .los{ border-left:6px solid #e74c3c; }
-    .pf{ border-left:6px solid #95a5a6; }
-    .unk{ border-left:6px solid #f1c40f; }
+      <!doctype html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Reporte SmartOLT (MINTIC)</title>
+        <style>
+          *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+          body{ margin:24px; color:#111; }
+          .top{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+          h1{ margin:0; font-size:20px; }
+          .meta{ color:#666; font-size:12px; margin-top:6px; }
+          .cards{ margin-top:14px; display:grid; grid-template-columns: repeat(5, 1fr); gap:10px; }
+          .card{ border-radius:14px; padding:10px 12px; background:#fff; border:1px solid #eee; }
+          .card b{ display:block; font-size:20px; margin-top:4px; }
+          .total{ border-left:6px solid #111; }
+          .ok{ border-left:6px solid #2ecc71; }
+          .los{ border-left:6px solid #e74c3c; }
+          .pf{ border-left:6px solid #95a5a6; }
+          .unk{ border-left:6px solid #f1c40f; }
 
-    .table-wrap{ margin-top:16px; }
+          .table-wrap{ margin-top:16px; }
 
-    table{ width:100%; border-collapse: collapse; font-size:11px; }
-    thead th{ text-align:left; padding:8px; background:#f6f7f9; border-bottom:1px solid #e5e7eb; }
-    tbody td{ padding:8px; border-bottom:1px solid #eee; vertical-align:top; }
+          table{ width:100%; border-collapse: collapse; font-size:11px; }
+          thead th{ text-align:left; padding:8px; background:#f6f7f9; border-bottom:1px solid #e5e7eb; }
+          tbody td{ padding:8px; border-bottom:1px solid #eee; vertical-align:top; }
 
-    .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:10px; border:1px solid #ddd; }
-    .pill.online{ border-color:#2ecc71; color:#2ecc71; }
-    .pill.los{ border-color:#e74c3c; color:#e74c3c; }
-    .pill.power{ border-color:#7f8c8d; color:#7f8c8d; }
-    .pill.unk{ border-color:#f1c40f; color:#c49000; }
+          .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:10px; border:1px solid #ddd; }
+          .pill.online{ border-color:#2ecc71; color:#2ecc71; }
+          .pill.los{ border-color:#e74c3c; color:#e74c3c; }
+          .pill.power{ border-color:#7f8c8d; color:#7f8c8d; }
+          .pill.unk{ border-color:#f1c40f; color:#c49000; }
 
-    .foot{ margin-top:14px; font-size:10px; color:#666; }
+          .foot{ margin-top:14px; font-size:10px; color:#666; }
 
-    /* ✅ saltos de página */
-    .page-block{ page-break-after: always; }
-    .page-block:last-child{ page-break-after: auto; }
+          /* saltos de página */
+          .page-block{ page-break-after: always; margin-bottom: 10px; }
+          .page-block:last-child{ page-break-after: auto; }
 
-    .page-meta{
-      margin: 10px 0 6px;
-      font-size: 11px;
-      color:#444;
-    }
-  </style>
-</head>
-<body>
-  <div class="top">
-    <div>
-      <h1>Reporte SmartOLT (solo MINTIC)</h1>
-      <div class="meta">
-        Generado: ${now.toLocaleString()}<br/>
-        Total ONUs (MINTIC): ${counts.total} — Mostradas: ${filtered.length}<br/>
-        Fuente: ${r.fromCache ? "Cache" : "Live"} ${r.cachedAt ? `(${new Date(r.cachedAt).toLocaleString()})` : ""}
-      </div>
-    </div>
-    <div class="meta">
-      Filtro q: <b>${q || "-"}</b><br/>
-      Filtro status: <b>${statusQ || "-"}</b><br/>
-      Paginación: <b>${PAGE_SIZE}</b> filas por página
-    </div>
-  </div>
+          .page-meta{
+            margin: 10px 0 6px;
+            font-size: 11px;
+            color:#444;
+          }
 
-  <div class="cards">
-    <div class="card total"><div>Total</div><b>${counts.total}</b></div>
-    <div class="card ok"><div>Online</div><b>${counts.online}</b></div>
-    <div class="card los"><div>LOS</div><b>${counts.los}</b></div>
-    <div class="card pf"><div>Power Failed</div><b>${counts.power_failed}</b></div>
-    <div class="card unk"><div>Unknown</div><b>${counts.unknown}</b></div>
-  </div>
+          .section{ margin-top: 18px; }
+          .section-title{
+            margin: 16px 0 6px;
+            font-size: 14px;
+            font-weight: 800;
+            padding: 8px 10px;
+            background: #f6f7f9;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+          }
+          .section-count{ font-weight: 700; color:#444; margin-left: 6px; }
+        </style>
+      </head>
+      <body>
+        <div class="top">
+          <div>
+            <h1>Reporte SmartOLT (solo MINTIC) — por UPZ</h1>
+            <div class="meta">
+              Generado: ${now.toLocaleString()}<br/>
+              Total ONUs (MINTIC): ${counts.total} — Mostradas: ${filtered.length}<br/>
+              Fuente: ${r.fromCache ? "Cache" : "Live"} ${r.cachedAt ? `(${new Date(r.cachedAt).toLocaleString()})` : ""}
+            </div>
+            <div class="meta">
+              UPZ Lucero: <b>${lucero.length}</b> &nbsp;|&nbsp;
+              UPZ Tesoro: <b>${tesoro.length}</b> &nbsp;|&nbsp;
+              Otras: <b>${otras.length}</b>
+            </div>
+          </div>
+          <div class="meta">
+            Filtro q: <b>${q || "-"}</b><br/>
+            Filtro status: <b>${statusQ || "-"}</b><br/>
+            Paginación: <b>${PAGE_SIZE}</b> filas por bloque
+          </div>
+        </div>
 
-  <div class="table-wrap">
-    ${pages.map((rows, idx) => renderTable(rows, idx)).join("")}
-  </div>
+        <div class="cards">
+          <div class="card total"><div>Total</div><b>${counts.total}</b></div>
+          <div class="card ok"><div>Online</div><b>${counts.online}</b></div>
+          <div class="card los"><div>LOS</div><b>${counts.los}</b></div>
+          <div class="card pf"><div>Power Failed</div><b>${counts.power_failed}</b></div>
+          <div class="card unk"><div>Unknown</div><b>${counts.unknown}</b></div>
+        </div>
 
-  <div class="foot">
-    Nota: este PDF incluye todas las filas filtradas (sin límite). Si aumenta mucho, se incrementan las páginas.
-  </div>
-</body>
-</html>
+        <div class="table-wrap">
+          ${renderSection("UPZ Lucero (MINTIC LF3GRP1)", lucero)}
+          ${renderSection("UPZ Tesoro (MINTIC LF3GRP2)", tesoro)}
+          ${otras.length ? renderSection("Otras (MINTIC sin LF3GRP1/2)", otras) : ""}
+        </div>
+
+        <div class="foot">
+          Nota: se organizan por UPZ según el comentario/address (LF3GRP1=Lucero, LF3GRP2=Tesoro).
+        </div>
+      </body>
+      </html>
     `;
 
     const browser = await puppeteer.launch({
@@ -497,7 +524,7 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
       });
 
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="reporte-smartolt-mintic.pdf"`);
+      res.setHeader("Content-Disposition", `attachment; filename="reporte-smartolt-mintic-upz.pdf"`);
       return res.status(200).send(pdf);
     } finally {
       await browser.close();
@@ -533,7 +560,6 @@ smartOltRouter.get("/report/onu/:id", async (req, res, next) => {
 
     async function fetchAsDataUrl(url: string) {
       const resp = await fetch(url, {
-        method: "GET",
         cache: "no-store",
         headers: { Accept: "image/*,application/json,text/plain,*/*" },
       });
@@ -545,7 +571,7 @@ smartOltRouter.get("/report/onu/:id", async (req, res, next) => {
         const buf = Buffer.from(ab);
         return { ok: true as const, dataUrl: `data:${ct};base64,${buf.toString("base64")}` };
       }
-    
+
       const text = await resp.text().catch(() => "");
 
       let j: any = null;
@@ -573,7 +599,7 @@ smartOltRouter.get("/report/onu/:id", async (req, res, next) => {
           return { ok: true as const, dataUrl: `data:image/png;base64,${candidate}` };
         }
       }
-    
+
       const isEmptyObj =
         resp.ok && payload && typeof payload === "object" && !Array.isArray(payload) && Object.keys(payload).length === 0;
 
@@ -649,175 +675,173 @@ smartOltRouter.get("/report/onu/:id", async (req, res, next) => {
 
     const now = new Date();
     const html = `
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Reporte ONU ${esc(id)}</title>
-  <style>
-    *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
-    body{ margin:10px; color:#111; }
-    h1{ margin:0 0 2px 0; font-size:14px; }
-    .meta{ font-size:10px; color:#555; margin-bottom:6px; }
+        <!doctype html>
+        <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Reporte ONU ${esc(id)}</title>
+          <style>
+            *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+            body{ margin:10px; color:#111; }
+            h1{ margin:0 0 2px 0; font-size:14px; }
+            .meta{ font-size:10px; color:#555; margin-bottom:6px; }
 
-    .top{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:6px;
-      margin-bottom:6px;
-    }
+            .top{
+              display:grid;
+              grid-template-columns: 1fr 1fr;
+              gap:6px;
+              margin-bottom:6px;
+            }
+            .card{
+              border:1px solid #e5e7eb;
+              border-radius:10px;
+              padding:6px;
+            }
+            .card h2{ margin:0 0 6px 0; font-size:11px; }
 
-    .card{
-      border:1px solid #e5e7eb;
-      border-radius:10px;
-      padding:6px;
-    }
-    .card h2{ margin:0 0 6px 0; font-size:11px; }
+            .row{
+              display:flex;
+              justify-content:space-between;
+              gap:8px;
+              padding:3px 0;
+              border-bottom:1px dashed #eee;
+              font-size:10px;
+            }
+            .row:last-child{ border-bottom:0; }
+            .k{ color:#555; }
+            .v{ font-weight:700; color:#111; text-align:right; }
 
-    .row{
-      display:flex;
-      justify-content:space-between;
-      gap:8px;
-      padding:3px 0;
-      border-bottom:1px dashed #eee;
-      font-size:10px;
-    }
-    .row:last-child{ border-bottom:0; }
-    .k{ color:#555; }
-    .v{ font-weight:700; color:#111; text-align:right; }
+            .charts-2col{
+              display:grid;
+              grid-template-columns: 1fr 1fr;
+              gap:6px;
+              margin-top: 2px;
+            }
 
-    .charts-2col{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:6px;
-      margin-top: 2px;
-    }
+            .section-title{
+              margin: 0 0 4px 0;
+              font-size: 11px;
+              font-weight: 800;
+            }
 
-    .section-title{
-      margin: 0 0 4px 0;
-      font-size: 11px;
-      font-weight: 800;
-    }
+            .stack{ display:flex; flex-direction:column; gap:4px; }
 
-    .stack{ display:flex; flex-direction:column; gap:4px; }
+            .gcard{
+              border:1px solid #e5e7eb;
+              border-radius:8px;
+              padding:4px;
+              page-break-inside: avoid;
+            }
 
-    .gcard{
-      border:1px solid #e5e7eb;
-      border-radius:8px;
-      padding:4px;
-      page-break-inside: avoid;
-    }
+            .ghead{
+              display:flex;
+              justify-content:space-between;
+              align-items:center;
+              margin-bottom: 3px;
+              gap:8px;
+            }
 
-    .ghead{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      margin-bottom: 3px;
-      gap:8px;
-    }
+            .gt{
+              font-size: 9px;
+              font-weight: 900;
+              color:#111;
+              text-transform: uppercase;
+              letter-spacing: .3px;
+            }
 
-    .gt{
-      font-size: 9px;
-      font-weight: 900;
-      color:#111;
-      text-transform: uppercase;
-      letter-spacing: .3px;
-    }
+            .gs{ font-size: 9px; color:#666; white-space:nowrap; }
 
-    .gs{ font-size: 9px; color:#666; white-space:nowrap; }
+            .imgwrap{
+              border:1px solid #e5e7eb;
+              border-radius:7px;
+              padding:3px;
+            }
 
-    .imgwrap{
-      border:1px solid #e5e7eb;
-      border-radius:7px;
-      padding:3px;
-    }
+            img{
+              width:100%;
+              height:auto;
+              display:block;
+              max-height: 80px;
+              object-fit: contain;
+            }
 
-    img{
-      width:100%;
-      height:auto;
-      display:block;
-      max-height: 80px;   /* ✅ para que quepan 5 tarjetas */
-      object-fit: contain;
-    }
+            .gempty{
+              padding:8px;
+              border-radius:7px;
+              background:#fafafa;
+              border:1px dashed #ddd;
+              font-size:9px;
+              color:#666;
+              text-align:center;
+            }
 
-    .gempty{
-      padding:8px;
-      border-radius:7px;
-      background:#fafafa;
-      border:1px dashed #ddd;
-      font-size:9px;
-      color:#666;
-      text-align:center;
-    }
+            .note{
+              margin-top: 6px;
+              font-size: 9px;
+              color:#666;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Reporte ONU: ${esc(onu?.name ?? id)}</h1>
+          <div class="meta">
+            External ID: <b>${esc(id)}</b> &nbsp;|&nbsp; Generado: ${esc(now.toLocaleString())}
+          </div>
 
-    .note{
-      margin-top: 6px;
-      font-size: 9px;
-      color:#666;
-    }
-  </style>
-</head>
-<body>
-  <h1>Reporte ONU: ${esc(onu?.name ?? id)}</h1>
-  <div class="meta">
-    External ID: <b>${esc(id)}</b> &nbsp;|&nbsp; Generado: ${esc(now.toLocaleString())}
-  </div>
-
-  <div class="top">
-    <div class="card">
-      <h2>ONU Info</h2>
-      ${[
-        ["Estado", onu?.status],
-        ["SN", onu?.sn],
-        ["OLT", `${onu?.olt_id ?? "-"} - ${onu?.olt_name ?? "-"}`],
-        ["Board/Port/ONU", `${onu?.board ?? "-"} / ${onu?.port ?? "-"} / ${onu?.onu ?? "-"}`],
-        ["ONU Type", onu?.onu_type_name],
-        ["Zona", onu?.zone_name],
-        ["ODB", onu?.odb_name],
-        ["Dirección", onu?.address],
-        ["Auth date", onu?.authorization_date],
-      ].map(([k, v]) => `<div class="row"><div class="k">${esc(k)}</div><div class="v">${esc(v ?? "-")}</div></div>`).join("")}
-    </div>
-
-    <div class="card">
-      <h2>Servicios</h2>
-      ${[
-        ["VLAN", onu?.service_ports?.[0]?.vlan ?? onu?.vlan],
-        ["CATV", onu?.catv],
-        ["Signal 1310", (onu?.signal_1310 ?? "") === "" ? "-" : `${onu?.signal_1310} dBm`],
-        ["Signal 1490", (onu?.signal_1490 ?? "") === "" ? "-" : `${onu?.signal_1490} dBm`],
-        ["Mode", onu?.mode],
-        ["WAN mode", onu?.wan_mode],
-        ["TR069", onu?.tr069],
-        ["Mgmt IP mode", onu?.mgmt_ip_mode],
-      ].map(([k, v]) => `<div class="row"><div class="k">${esc(k)}</div><div class="v">${esc(v ?? "-")}</div></div>`).join("")}
-    </div>
-  </div>
-
-  <div class="charts-2col">
-    <div class="charts-col">
-      <div class="section-title">Señal (hourly/daily/weekly/monthly/yearly)</div>
-      <div class="stack">
-        ${signalImgs.map((it: any) => renderImgCard(it.tipo, it)).join("")}
-      </div>
-    </div>
-
-    <div class="charts-col">
-      <div class="section-title">Tráfico (hourly/daily/weekly/monthly/yearly)</div>
-      <div class="stack">
-        ${trafficImgs.map((it: any) => renderImgCard(it.tipo, it)).join("")}
-      </div>
-    </div>
-  </div>
-
-  <div class="note">
-    Si alguna tarjeta dice "Sin datos", el endpoint devolvió JSON/data vacío o hubo límite/403/429.
-  </div>
-</body>
-</html>
+          <div class="top">
+            <div class="card">
+              <h2>ONU Info</h2>
+              ${[
+                ["Estado", onu?.status],
+                ["SN", onu?.sn],
+                ["OLT", `${onu?.olt_id ?? "-"} - ${onu?.olt_name ?? "-"}`],
+                ["Board/Port/ONU", `${onu?.board ?? "-"} / ${onu?.port ?? "-"} / ${onu?.onu ?? "-"}`],
+                ["ONU Type", onu?.onu_type_name],
+                ["Zona", onu?.zone_name],
+                ["ODB", onu?.odb_name],
+                ["Dirección", onu?.address],
+                ["Auth date", onu?.authorization_date],
+              ].map(([k, v]) => `<div class="row"><div class="k">${esc(k)}</div><div class="v">${esc(v ?? "-")}</div></div>`).join("")}
+            </div>
+            
+            <div class="card">
+              <h2>Servicios</h2>
+              ${[
+                ["VLAN", onu?.service_ports?.[0]?.vlan ?? onu?.vlan],
+                ["CATV", onu?.catv],
+                ["Signal 1310", (onu?.signal_1310 ?? "") === "" ? "-" : `${onu?.signal_1310} dBm`],
+                ["Signal 1490", (onu?.signal_1490 ?? "") === "" ? "-" : `${onu?.signal_1490} dBm`],
+                ["Mode", onu?.mode],
+                ["WAN mode", onu?.wan_mode],
+                ["TR069", onu?.tr069],
+                ["Mgmt IP mode", onu?.mgmt_ip_mode],
+              ].map(([k, v]) => `<div class="row"><div class="k">${esc(k)}</div><div class="v">${esc(v ?? "-")}</div></div>`).join("")}
+            </div>
+          </div>
+            
+          <div class="charts-2col">
+            <div class="charts-col">
+              <div class="section-title">Señal (hourly/daily/weekly/monthly/yearly)</div>
+              <div class="stack">
+                ${signalImgs.map((it: any) => renderImgCard(it.tipo, it)).join("")}
+              </div>
+            </div>
+            
+            <div class="charts-col">
+              <div class="section-title">Tráfico (hourly/daily/weekly/monthly/yearly)</div>
+              <div class="stack">
+                ${trafficImgs.map((it: any) => renderImgCard(it.tipo, it)).join("")}
+              </div>
+            </div>
+          </div>
+            
+          <div class="note">
+            Si alguna tarjeta dice "Sin datos", el endpoint devolvió JSON/data vacío o hubo límite/403/429.
+          </div>
+        </body>
+        </html>
     `;
 
-    // 4) Generar PDF (IMPORTANTÍSIMO: NO pageRanges:"1")
     const browser = await puppeteer.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],

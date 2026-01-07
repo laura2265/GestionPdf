@@ -77,7 +77,6 @@ function SmartOlt() {
     const addr = String(o?.address ?? "").trim().toLowerCase();
     if (!addr.includes("mintic")) return false;
 
-
     if (fOlt) {
       const val = String(o?.olt_id ?? o?.olt_name ?? "");
       if (val !== fOlt) return false;
