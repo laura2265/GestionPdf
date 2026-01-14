@@ -69,7 +69,6 @@ function InformacionIdExternal() {
         const result = await r.json();
         if (!r.ok) throw new Error(result?.message || "Error consultando detalles ONU");
 
-       
         setDetails(result?.data?.onu_details ?? null);
       } catch (e) {
         setDetails(null);
@@ -205,21 +204,21 @@ function InformacionIdExternal() {
         <div className="onu-summary">
           <div className="onu-summary-card">
             <div className="onu-summary-cols">
-        
+
               <div className="onu-summary-col">
                 <h3 className="onu-summary-title">ONU Info</h3>
-        
+
                 <div className="onu-rows">
                   <div className="onu-row"><span>OLT</span><b>{details?.olt_id} - {details?.olt_name ?? "-"}</b></div>
                   <div className="onu-row"><span>Board</span><b>{details?.board ?? "-"}</b></div>
                   <div className="onu-row"><span>Port</span><b>{details?.port ?? "-"}</b></div>
                   <div className="onu-row"><span>ONU</span><b>{details?.onu ?? "-"}</b></div>
-        
+
                   <div className="onu-row">
                     <span>GPON channel</span>
                     <b>{`gpon-onu_1/${details?.board ?? "-"}/${details?.port ?? "-"}:${details?.onu ?? "-"}`}</b>
                   </div>
-        
+
                   <div className="onu-row"><span>SN</span><b>{details?.sn ?? "-"}</b></div>
                   <div className="onu-row"><span>ONU type</span><b>{details?.onu_type_name ?? "-"}</b></div>
                   <div className="onu-row"><span>Zone</span><b>{details?.zone_name ?? "-"}</b></div>
@@ -233,7 +232,7 @@ function InformacionIdExternal() {
 
               <div className="onu-summary-col">
                 <h3 className="onu-summary-title">Status & Services</h3>
-        
+
                 <div className="onu-rows">
                   <div className="onu-row">
                     <span>Status</span>
@@ -250,7 +249,7 @@ function InformacionIdExternal() {
                       {Number.isFinite(details?.signal_1490) ? `${details.signal_1490} dBm` : "-"}
                     </b>
                   </div>
-        
+
                   <div className="onu-row">
                     <span>Attached VLANs</span>
                     <b>
@@ -259,18 +258,18 @@ function InformacionIdExternal() {
                       )) ?? "-"}
                     </b>
                   </div>
-                  
+
                   <div className="onu-row">
                     <span>ONU mode</span>
                     <b>{details?.mode ?? "-"} {details?.vlan ? `- WAN vlan: ${details.vlan}` : ""}</b>
                   </div>
-                  
+
                   <div className="onu-row"><span>TR069</span><b>{details?.tr069 ?? "-"}</b></div>
                   <div className="onu-row"><span>Mgmt IP</span><b>{details?.mgmt_ip_mode ?? "-"}</b></div>
                   <div className="onu-row"><span>WAN setup mode</span><b>{details?.wan_mode ?? "-"}</b></div>
                 </div>
               </div>
-                  
+
             </div>
           </div>
         </div>

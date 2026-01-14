@@ -107,7 +107,6 @@ function SmartOlt() {
   });
 }, [onus, q, fOlt, fBoard, fPort, fZone, fOdb]);
 
-
     const StatusIcon = ({ status }) => {
       if (!status) return null;
 
@@ -187,7 +186,6 @@ function SmartOlt() {
             <option key={v} value={v}>{v}</option>
           ))}
         </select>
-
         <button
           className="btn"
           onClick={() => {
@@ -206,12 +204,27 @@ function SmartOlt() {
           onClick={() => {
             const params = new URLSearchParams();
             if (q.trim()) params.set("q", q.trim());
-          
+
             window.open(`http://localhost:3000/api/smart-olt/report/pdf?${params.toString()}`, "_blank");
           }}
         >
           Generar PDF
         </button>
+
+        <button
+          className="btn"
+          onClick={() => window.open("http://localhost:3000/api/smart-olt/report/pdf-upz/lucero", "_blank")}
+        >
+          PDF UPZ Lucero
+        </button>
+                
+        <button
+          className="btn"
+          onClick={() => window.open("http://localhost:3000/api/smart-olt/report/pdf-upz/tesoro", "_blank")}
+        >
+          PDF UPZ Tesoro
+        </button>
+
 
       </div>
 
@@ -278,5 +291,7 @@ function SmartOlt() {
     </div>
   );
 }
+
+
 
 export default SmartOlt;

@@ -1,7 +1,11 @@
 import { Router } from "express";
 import puppeteer from "puppeteer";
-export const smartOltRouter = Router();
+import fs from "fs";
+import path from "path";
+import os from "os";
+import sharp from "sharp";
 
+export const smartOltRouter = Router();
 
 async function fetchImage(url: string) {
   const resp = await fetch(url, {
@@ -463,7 +467,7 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
       <body>
         <div class="top">
           <div>
-            <h1>Reporte SmartOLT (solo MINTIC) — por UPZ</h1>
+            <h1>Reporte SmartOLT (solo MINTIC)</h1><br/>
             <div class="meta">
               Generado: ${now.toLocaleString()}<br/>
               Total ONUs (MINTIC): ${counts.total} — Mostradas: ${filtered.length}<br/>
@@ -476,8 +480,6 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
             </div>
           </div>
           <div class="meta">
-            Filtro q: <b>${q || "-"}</b><br/>
-            Filtro status: <b>${statusQ || "-"}</b><br/>
             Paginación: <b>${PAGE_SIZE}</b> filas por bloque
           </div>
         </div>
@@ -534,7 +536,7 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
   }
 });
 
- 
+
 smartOltRouter.get("/report/onu/:id", async (req, res, next) => {
   try {
     if (!tokenSmart) return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
@@ -863,6 +865,238 @@ smartOltRouter.get("/report/onu/:id", async (req, res, next) => {
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="reporte-onu-${id}.pdf"`);
       return res.status(200).send(pdf);
+    } finally {
+      await browser.close();
+    }
+  } catch (e) {
+    next(e);
+  }
+});
+
+
+
+smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
+  try {
+    if (!tokenSmart) return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
+
+    const refresh = req.query.refresh === "true";
+    const upz = String(req.params.upz || "").trim().toLowerCase();
+
+    const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
+    if (!r.ok) {
+      return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
+    }
+
+    const onus = Array.isArray(r.data?.onus) ? r.data.onus : [];
+    const comment = (o: any) => String(o?.address ?? o?.comment ?? "").toLowerCase();
+    const isMintic = (o: any) => comment(o).includes("mintic");
+
+    const upzOf = (o: any) => {
+      const c = comment(o);
+      if (c.includes("lf3grp1")) return "lucero";
+      if (c.includes("lf3grp2")) return "tesoro";
+      return "otros";
+    };
+
+    const list = onus.filter(isMintic).filter((o: any) => upzOf(o) === upz);
+
+    if (!list.length) {
+      return res.status(404).json({ message: `No hay ONUs para UPZ ${upz}` });
+    }
+
+    const chunk = <T,>(arr: T[], size: number) => {
+      const out: T[][] = [];
+      for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+      return out;
+    };
+    const pages = chunk(list, 3);
+
+    const esc = (v: any) =>
+      String(v ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+    const baseLocal = "http://localhost:3000/api/smart-olt";
+    const graphUrl = (kind: "signal" | "trafico", id: string) => {
+      const route =
+        kind === "signal"
+          ? `graffic-signal-onu-id/${encodeURIComponent(id)}/monthly`
+          : `graffic-trafico-onu-id/${encodeURIComponent(id)}/monthly`;
+      return `${baseLocal}/${route}${refresh ? "?refresh=true" : ""}`;
+    };
+
+    const now = new Date();
+
+    const renderCard = (o: any) => {
+      const id = String(o?.unique_external_id ?? o?.sn ?? "");
+      const status = String(o?.status ?? "").toLowerCase();
+
+      const pillClass =
+        status === "online" ? "online" :
+        status === "los" ? "los" :
+        status === "power failed" ? "pf" : "unk";
+
+      return `
+        <div class="card">
+          <div class="head">
+            <div class="left">
+              <div class="name">${esc(o?.name ?? id)}</div>
+              <div class="sub">
+                <span class="pill ${pillClass}">${esc(o?.status ?? "-")}</span>
+                <span class="muted">OLT:</span> <b>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</b>
+                <span class="muted">CATV:</span> <b>${esc(o?.catv ?? "-")}</b>
+              </div>
+              <div class="comment"><span class="muted">Comentario:</span> ${esc(o?.address ?? o?.comment ?? "-")}</div>
+            </div>
+            <div class="right">
+              <div class="muted">External ID</div>
+              <div class="idv">${esc(id)}</div>
+            </div>
+          </div>
+
+          <div class="grid2">
+            <div class="g">
+              <div class="gt">Señal (monthly)</div>
+              <img src="${graphUrl("signal", id)}" />
+            </div>
+
+            <div class="g">
+              <div class="gt">Tráfico (monthly)</div>
+              <img src="${graphUrl("trafico", id)}" />
+            </div>
+          </div>
+        </div>
+      `;
+    };
+
+    const renderPage = (items: any[], idx: number) => `
+      <section class="page">
+        <div class="pageHead">
+          <h1>Reporte UPZ ${esc(upz)}</h1>
+          <div class="meta">
+            Generado: ${esc(now.toLocaleString())} |
+            Página ${idx + 1} / ${pages.length} |
+            ONUs: ${list.length}
+          </div>
+        </div>
+
+        <div class="cards">
+          ${items.map(renderCard).join("")}
+        </div>
+      </section>
+    `;
+
+    const html = `
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Reporte UPZ ${esc(upz)}</title>
+  <style>
+    *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+    body{ margin:0; color:#111; }
+    .page{ padding:10mm; page-break-after: always; }
+    .page:last-child{ page-break-after: auto; }
+
+    .pageHead{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; }
+    h1{ margin:0; font-size:16px; }
+    .meta{ font-size:10px; color:#555; }
+
+    .cards{ display:flex; flex-direction:column; gap:8px; }
+
+    .card{
+      border:1px solid #e5e7eb;
+      border-radius:12px;
+      padding:8px;
+      page-break-inside: avoid;
+    }
+
+    .head{ display:flex; justify-content:space-between; gap:10px; }
+    .name{ font-size:12px; font-weight:800; }
+    .sub{ margin-top:2px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+    .comment{ margin-top:4px; font-size:10px; color:#111; }
+    .muted{ color:#666; font-size:10px; }
+
+    .right{ min-width:180px; text-align:right; }
+    .idv{ font-weight:800; font-size:10px; word-break:break-all; }
+
+    .pill{
+      display:inline-block; padding:2px 8px; border-radius:999px;
+      font-size:9px; border:1px solid #ddd;
+    }
+    .pill.online{ border-color:#2ecc71; color:#2ecc71; }
+    .pill.los{ border-color:#e74c3c; color:#e74c3c; }
+    .pill.pf{ border-color:#7f8c8d; color:#7f8c8d; }
+    .pill.unk{ border-color:#f1c40f; color:#b98300; }
+
+    .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+    .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
+    .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
+
+    img{
+      width:100%;
+      height:auto;
+      display:block;
+      max-height:140px;
+      object-fit:contain;
+    }
+  </style>
+</head>
+<body>
+  ${pages.map(renderPage).join("")}
+</body>
+</html>
+    `;
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+
+    const tmpPath = path.join(os.tmpdir(), `reporte-upz-${upz}-${Date.now()}.pdf`);
+
+    try {
+      const page = await browser.newPage();
+
+      page.setDefaultNavigationTimeout(0);
+      page.setDefaultTimeout(0);
+      await page.setContent(html, { waitUntil: "domcontentloaded" });
+
+      await page.evaluate(async () => {
+        const imgs = Array.from(document.images || []);
+        const waitOne = (img: HTMLImageElement) =>
+          new Promise<void>((resolve) => {
+            if (img.complete) return resolve();
+            img.addEventListener("load", () => resolve(), { once: true });
+            img.addEventListener("error", () => resolve(), { once: true });
+          });
+        
+        await Promise.all(imgs.map(waitOne));
+      });
+      
+      await page.emulateMediaType("screen");
+
+      await page.pdf({
+        path: tmpPath,
+        format: "A4",
+        landscape: true,
+        printBackground: true,
+        margin: { top: "6mm", right: "6mm", bottom: "6mm", left: "6mm" },
+        scale: 0.9,
+      });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="reporte-upz-${upz}.pdf"`);
+
+      const stream = fs.createReadStream(tmpPath);
+      stream.pipe(res);
+
+      stream.on("close", () => {
+        fs.unlink(tmpPath, () => {});
+      });
     } finally {
       await browser.close();
     }

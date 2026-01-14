@@ -23,6 +23,7 @@ export default function InformacionUser() {
 
   useEffect(() => {
     let alive = true;
+
     (async () => {
       try {
         setLoading(true);
@@ -44,6 +45,7 @@ export default function InformacionUser() {
             ...authHeaders,
           },
         });
+
         if (rRes.ok) {
           const rJson = await rRes.json();
           const arr = rJson.data || rJson.items || rJson.item || rJson || [];
