@@ -31,7 +31,6 @@ async function mapLimit<T, R>(
   return results;
 }
 
-// para escapar HTML
 const esc = (v: any) =>
   String(v ?? "")
     .replace(/&/g, "&amp;")
@@ -40,7 +39,6 @@ const esc = (v: any) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 
-// ====== (OPCIONAL) cache de imágenes separado (recomendado) ======
 type ImgCacheEntry = { at: number; dataUrl: string };
 const imgCache = new Map<string, ImgCacheEntry>();
 const IMG_TTL_MS = 30 * 60 * 1000;
@@ -60,7 +58,6 @@ function setImgCached(key: string, dataUrl: string) {
   imgCache.set(imgCacheKey(key), { at: Date.now(), dataUrl });
 }
 
-// ====== Fetch imagen SmartOLT => dataURL base64 ======
 async function fetchGraphAsDataUrl(url: string, cacheKey: string) {
   const cached = getImgCached(cacheKey);
   if (cached) return { ok: true as const, dataUrl: cached.dataUrl, fromCache: true };
@@ -75,7 +72,6 @@ async function fetchGraphAsDataUrl(url: string, cacheKey: string) {
 
   const ct = (resp.headers.get("content-type") || "").toLowerCase();
 
-  // si OK y es imagen
   if (resp.ok && ct.startsWith("image/")) {
     const ab = await resp.arrayBuffer();
     const buf = Buffer.from(ab);
@@ -85,7 +81,6 @@ async function fetchGraphAsDataUrl(url: string, cacheKey: string) {
   }
 
   const text = await resp.text().catch(() => "");
-  // si bloqueo 403: intenta servir cache viejo si existe
   if (resp.status === 403) {
     const old = getImgCached(cacheKey);
     if (old) return { ok: true as const, dataUrl: old.dataUrl, fromCache: true };
@@ -139,7 +134,6 @@ function getCached(key: string) {
 function setCached(key: string, data: any) {
   cacheMap.set(cacheKey(key), { at: Date.now(), data });
 }
-
 
 async function fetchWithCache(
   key: string,
@@ -622,7 +616,6 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
   }
 });
 
-
 smartOltRouter.get("/report/onu/:id", async (req, res, next) => {
   try {
     if (!tokenSmart) return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
@@ -689,8 +682,7 @@ smartOltRouter.get("/report/onu/:id", async (req, res, next) => {
         }
       }
 
-      const isEmptyObj =
-        resp.ok && payload && typeof payload === "object" && !Array.isArray(payload) && Object.keys(payload).length === 0;
+      const isEmptyObj = resp.ok && payload && typeof payload === "object" && !Array.isArray(payload) && Object.keys(payload).length === 0;
 
       if (isEmptyObj) {
         return {
@@ -959,7 +951,6 @@ smartOltRouter.get("/report/onu/:id", async (req, res, next) => {
     next(e);
   }
 });
-
 
 
 smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
