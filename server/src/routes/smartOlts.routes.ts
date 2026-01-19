@@ -1,16 +1,10 @@
 import { Router } from "express";
 import puppeteer from "puppeteer";
-import fs from "fs";
-import os from "os";
-import path from "path";
-
 export const smartOltRouter = Router();
-const TIPOS = ["hourly", "daily", "weekly", "monthly", "yearly"] as const;
+import { PDFDocument } from "pdf-lib";
 
-// pequeño sleep para throttle
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// limitador de concurrencia simple
 async function mapLimit<T, R>(
   items: T[],
   limit: number,
@@ -384,10 +378,11 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
     const getComment = (o: any) => String(o?.address ?? o?.comment ?? "").trim();
     const getUpz = (o: any) => {
       const c = getComment(o).toLowerCase();
-      if (c.includes("LF3GRP1")) return "Lucero";
-      if (c.includes("LF3GRP2")) return "Tesoro";
+      if (c.includes("lf3grp1")) return "Lucero";
+      if (c.includes("lf3grp2")) return "Tesoro";
       return "Otras";
     };
+
 
     const minticOnus = onus.filter((o: any) => getComment(o).toLowerCase().includes("mintic"));
 
@@ -523,14 +518,20 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
           .pill.unk{ border-color:#f1c40f; color:#c49000; }
           .foot{ margin-top:14px; font-size:10px; color:#666; }
 
-          .page-block{ page-break-after: always; margin-bottom: 10px; }
-          .page-block:last-child{ page-break-after: auto; }
+          .page-block{ 
+            page-break-after: always; margin-bottom: 10px; 
+          }
+
+          .page-block:last-child{ 
+            page-break-after: auto; 
+          }
 
           .page-meta{
             margin: 10px 0 6px;
             font-size: 11px;
             color:#444;
           }
+
           .section{ margin-top: 18px; }
           .section-title{
             margin: 16px 0 6px;
@@ -541,6 +542,7 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
             border: 1px solid #e5e7eb;
             border-radius: 10px;
           }
+
           .section-count{ font-weight: 700; color:#444; margin-left: 6px; }
         </style>
       </head>
@@ -616,341 +618,6 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
   }
 });
 
-smartOltRouter.get("/report/onu/:id", async (req, res, next) => {
-  try {
-    if (!tokenSmart) return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
-
-    const { id } = req.params;
-    const refresh = req.query.refresh === "true";
-    const TIPOS = ["monthly"] as const;
-
-    const detailsR = await fetchWithCache(
-      `details:${id}`,
-      `${baseUrl}/onu/get_onu_details/${encodeURIComponent(id)}`,
-      { refresh }
-    );
-
-    if (!detailsR.ok) {
-      return res.status(detailsR.status ?? 500).json({
-        message: "Error consultando detalles ONU",
-        body: detailsR.data,
-      });
-    }
-
-    const onu = detailsR.data?.onu_details ?? null;
-
-    async function fetchAsDataUrl(url: string) {
-      const resp = await fetch(url, {
-        cache: "no-store",
-        headers: { Accept: "image/*,application/json,text/plain,*/*" },
-      });
-
-      const ct = (resp.headers.get("content-type") || "").toLowerCase();
-
-      if (resp.ok && ct.startsWith("image/")) {
-        const ab = await resp.arrayBuffer();
-        const buf = Buffer.from(ab);
-        return { ok: true as const, dataUrl: `data:${ct};base64,${buf.toString("base64")}` };
-      }
-
-      const text = await resp.text().catch(() => "");
-
-      let j: any = null;
-      try {
-        j = text ? JSON.parse(text) : null;
-      } catch {
-        j = null;
-      }
-
-      const payload = j?.data ?? j;
-
-      const candidate =
-        payload?.dataUrl ??
-        payload?.data_url ??
-        payload?.base64 ??
-        payload?.image ??
-        payload?.img ??
-        payload?.url ??
-        null;
-
-      if (resp.ok && typeof candidate === "string") {
-        if (candidate.startsWith("data:image/")) {
-          return { ok: true as const, dataUrl: candidate };
-        }
-        if (/^[A-Za-z0-9+/=]+$/.test(candidate.slice(0, 60))) {
-          return { ok: true as const, dataUrl: `data:image/png;base64,${candidate}` };
-        }
-      }
-
-      const isEmptyObj = resp.ok && payload && typeof payload === "object" && !Array.isArray(payload) && Object.keys(payload).length === 0;
-
-      if (isEmptyObj) {
-        return {
-          ok: false as const,
-          status: resp.status,
-          text: "Sin datos para este rango (data={}).",
-          contentType: ct,
-        };
-      }
-
-      return {
-        ok: false as const,
-        status: resp.status,
-        text: (text || `Respuesta no-image (content-type: ${ct || "-"})`).slice(0, 220),
-        contentType: ct,
-      };
-    }
-
-    const baseLocal = "http://localhost:3000/api/smart-olt";
-
-    const signalJobs = TIPOS.map((tipo) => ({
-      tipo,
-      url: `${baseLocal}/graffic-signal-onu-id/${encodeURIComponent(id)}/${encodeURIComponent(tipo)}${
-        refresh ? "?refresh=true" : ""
-      }`,
-    }));
-
-    const trafficJobs = TIPOS.map((tipo) => ({
-      tipo,
-      url: `${baseLocal}/graffic-trafico-onu-id/${encodeURIComponent(id)}/${encodeURIComponent(tipo)}${
-        refresh ? "?refresh=true" : ""
-      }`,
-    }));
-
-    const [signalImgs, trafficImgs] = await Promise.all([
-      Promise.all(signalJobs.map(async (j) => ({ tipo: j.tipo, ...(await fetchAsDataUrl(j.url)) }))),
-      Promise.all(trafficJobs.map(async (j) => ({ tipo: j.tipo, ...(await fetchAsDataUrl(j.url)) }))),
-    ]);
-
-    const esc = (v: any) =>
-      String(v ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-
-    const renderImgCard = (tipo: string, item: any) => {
-      const label = esc(tipo);
-      if (!item?.ok) {
-        return `
-          <div class="gcard">
-            <div class="ghead">
-              <div class="gt">${label}</div>
-              <div class="gs">HTTP ${esc(item?.status ?? "-")}</div>
-            </div>
-            <div class="gempty">
-              ${esc(item?.text ?? "Sin imagen")}
-            </div>
-          </div>
-        `;
-      }
-
-      return `
-        <div class="gcard">
-          <div class="ghead"><div class="gt">${label}</div></div>
-          <div class="imgwrap"><img src="${item.dataUrl}" /></div>
-        </div>
-      `;
-    };
-
-    const now = new Date();
-    const html = `
-        <!doctype html>
-        <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>Reporte ONU ${esc(id)}</title>
-          <style>
-            *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
-            body{ margin:10px; color:#111; }
-            h1{ margin:0 0 2px 0; font-size:14px; }
-            .meta{ font-size:10px; color:#555; margin-bottom:6px; }
-
-            .top{
-              display:grid;
-              grid-template-columns: 1fr 1fr;
-              gap:6px;
-              margin-bottom:6px;
-            }
-            .card{
-              border:1px solid #e5e7eb;
-              border-radius:10px;
-              padding:6px;
-            }
-            .card h2{ margin:0 0 6px 0; font-size:11px; }
-
-            .row{
-              display:flex;
-              justify-content:space-between;
-              gap:8px;
-              padding:3px 0;
-              border-bottom:1px dashed #eee;
-              font-size:10px;
-            }
-            .row:last-child{ border-bottom:0; }
-            .k{ color:#555; }
-            .v{ font-weight:700; color:#111; text-align:right; }
-
-            .charts-2col{
-              display:grid;
-              grid-template-columns: 1fr 1fr;
-              gap:6px;
-              margin-top: 2px;
-            }
-
-            .section-title{
-              margin: 0 0 4px 0;
-              font-size: 11px;
-              font-weight: 800;
-            }
-
-            .stack{ display:flex; flex-direction:column; gap:4px; }
-
-            .gcard{
-              border:1px solid #e5e7eb;
-              border-radius:8px;
-              padding:4px;
-              page-break-inside: avoid;
-            }
-
-            .ghead{
-              display:flex;
-              justify-content:space-between;
-              align-items:center;
-              margin-bottom: 3px;
-              gap:8px;
-            }
-
-            .gt{
-              font-size: 9px;
-              font-weight: 900;
-              color:#111;
-              text-transform: uppercase;
-              letter-spacing: .3px;
-            }
-
-            .gs{ font-size: 9px; color:#666; white-space:nowrap; }
-
-            .imgwrap{
-              border:1px solid #e5e7eb;
-              border-radius:7px;
-              padding:3px;
-            }
-
-            img{
-              width:100%;
-              height:auto;
-              display:block;
-              max-height: 80px;
-              object-fit: contain;
-            }
-
-            .gempty{
-              padding:8px;
-              border-radius:7px;
-              background:#fafafa;
-              border:1px dashed #ddd;
-              font-size:9px;
-              color:#666;
-              text-align:center;
-            }
-
-            .note{
-              margin-top: 6px;
-              font-size: 9px;
-              color:#666;
-            }
-          </style>
-        </head>
-        <body>
-          <h1>Reporte ONU: ${esc(onu?.name ?? id)}</h1>
-          <div class="meta">
-            External ID: <b>${esc(id)}</b> &nbsp;|&nbsp; Generado: ${esc(now.toLocaleString())}
-          </div>
-
-          <div class="top">
-            <div class="card">
-              <h2>ONU Info</h2>
-              ${[
-                ["Estado", onu?.status],
-                ["SN", onu?.sn],
-                ["OLT", `${onu?.olt_id ?? "-"} - ${onu?.olt_name ?? "-"}`],
-                ["Board/Port/ONU", `${onu?.board ?? "-"} / ${onu?.port ?? "-"} / ${onu?.onu ?? "-"}`],
-                ["ONU Type", onu?.onu_type_name],
-                ["Zona", onu?.zone_name],
-                ["ODB", onu?.odb_name],
-                ["Dirección", onu?.address],
-                ["Auth date", onu?.authorization_date],
-              ].map(([k, v]) => `<div class="row"><div class="k">${esc(k)}</div><div class="v">${esc(v ?? "-")}</div></div>`).join("")}
-            </div>
-            
-            <div class="card">
-              <h2>Servicios</h2>
-              ${[
-                ["VLAN", onu?.service_ports?.[0]?.vlan ?? onu?.vlan],
-                ["CATV", onu?.catv],
-                ["Signal 1310", (onu?.signal_1310 ?? "") === "" ? "-" : `${onu?.signal_1310} dBm`],
-                ["Signal 1490", (onu?.signal_1490 ?? "") === "" ? "-" : `${onu?.signal_1490} dBm`],
-                ["Mode", onu?.mode],
-                ["WAN mode", onu?.wan_mode],
-                ["TR069", onu?.tr069],
-                ["Mgmt IP mode", onu?.mgmt_ip_mode],
-              ].map(([k, v]) => `<div class="row"><div class="k">${esc(k)}</div><div class="v">${esc(v ?? "-")}</div></div>`).join("")}
-            </div>
-          </div>
-            
-          <div class="charts-2col">
-            <div class="charts-col">
-              <div class="section-title">Señal (hourly/daily/weekly/monthly/yearly)</div>
-              <div class="stack">
-                ${signalImgs.map((it: any) => renderImgCard(it.tipo, it)).join("")}
-              </div>
-            </div>
-
-            <div class="charts-col">
-              <div class="section-title">Tráfico (hourly/daily/weekly/monthly/yearly)</div>
-              <div class="stack">
-                ${trafficImgs.map((it: any) => renderImgCard(it.tipo, it)).join("")}
-              </div>
-            </div>
-          </div>
-            
-          <div class="note">
-            Si alguna tarjeta dice "Sin datos", el endpoint devolvió JSON/data vacío o hubo límite/403/429.
-          </div>
-        </body>
-        </html>
-    `;
-
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: "domcontentloaded" });
-      await new Promise((r) => setTimeout(r, 250));
-
-      const pdf = await page.pdf({
-        format: "A4",
-        landscape: true,
-        printBackground: true,
-        margin: { top: "5mm", right: "5mm", bottom: "5mm", left: "5mm" },
-        scale: 0.72,
-      });
-
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="reporte-onu-${id}.pdf"`);
-      return res.status(200).send(pdf);
-    } finally {
-      await browser.close();
-    }
-  } catch (e) {
-    next(e);
-  }
-});
 
 
 smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
@@ -964,64 +631,61 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
       return res.status(400).json({ message: "UPZ inválida. Use: lucero | tesoro" });
     }
 
-    const batch = Math.max(0, Number(req.query.batch ?? 0) || 0);
-    const size = Math.min(60, Math.max(3, Number(req.query.size ?? 30) || 30));
+    const merge = String(req.query.merge ?? "true").toLowerCase() === "true";
+
+    const size = Math.min(30, Math.max(10, Number(req.query.size ?? 20) || 20));
+
+    const onlyMintic = String(req.query.mintic ?? "false").toLowerCase() === "true";
+    const CONCURRENCY = 2;
+
+    const norm = (v: any) => String(v ?? "").trim().toLowerCase();
+
+    const esc = (s: any) =>
+      String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+    const textAll = (o: any) =>
+      `${o?.address ?? ""} ${o?.comment ?? ""} ${o?.name ?? ""} ${o?.zone_name ?? ""}`.toLowerCase();
+
+    const isMintic = (o: any) => textAll(o).includes("mintic");
+
+    const upzOf = (o: any) => {
+      const t = textAll(o);
+
+      const grp1 = /lf3\s*-?\s*grp\s*-?\s*1/.test(t) || t.includes("lf3grp1");
+      const grp2 = /lf3\s*-?\s*grp\s*-?\s*2/.test(t) || t.includes("lf3grp2");
+
+      if (grp1) return "lucero";
+      if (grp2) return "tesoro";
+      return "otros";
+    };
 
     const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
     if (!r.ok) return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
 
     const onus = Array.isArray(r.data?.onus) ? r.data.onus : [];
-    const comment = (o: any) => String(o?.address ?? o?.comment ?? "").toLowerCase();
-    const isMintic = (o: any) => comment(o).includes("mintic");
 
-    const upzOf = (o: any) => {
-      const c = comment(o);
-      if (c.includes("lf3grp1")) return "lucero";
-      if (c.includes("lf3grp2")) return "tesoro";
-      return "otros";
-    };
-    const listAll = onus.filter(isMintic).filter((o: any) => upzOf(o) === upz);
+    const listAll = onus
+      .filter((o: any) => (onlyMintic ? isMintic(o) : true))
+      .filter((o: any) => upzOf(o) === upz);
 
-    if (!listAll.length) return res.status(404).json({ message: `No hay ONUs para UPZ ${upz}` });
-
-    const total = listAll.length;
-
-    const start = batch * size;
-    const end = Math.min(start + size, total);
-    const list = listAll.slice(start, end);
-
-    const CONCURRENCY = 2;
-
-    const signalUrl = (id: string) =>
-      `${baseUrl}/onu/get_onu_signal_graph/${encodeURIComponent(id)}/monthly`;
-    const trafUrl = (id: string) =>
-      `${baseUrl}/onu/get_onu_traffic_graph/${encodeURIComponent(id)}/monthly`;
-
-    type Job = { kind: "signal" | "trafico"; id: string };
-    const jobs: Job[] = [];
-    for (const o of list) {
-      const id = String(o?.unique_external_id ?? o?.sn ?? "").trim();
-      if (!id) continue;
-      jobs.push({ kind: "signal", id });
-      jobs.push({ kind: "trafico", id });
+    if (!listAll.length) {
+      return res.status(404).json({
+        message: `No hay ONUs para UPZ ${upz}${onlyMintic ? " (mintic=true)" : ""}`,
+        debug: {
+          totalOnus: onus.length,
+          luceroCount: onus.filter((o: any) => upzOf(o) === "lucero").length,
+          tesoroCount: onus.filter((o: any) => upzOf(o) === "tesoro").length,
+          hint: "Si luceroCount/tesoroCount salen 0, revisa cómo viene el texto LF3GRP en get_all_onus_details.",
+        },
+      });
     }
 
-    const graphMap = new Map<string, { signal?: any; trafico?: any }>();
-
-    await mapLimit(jobs, CONCURRENCY, async (job) => {
-      await sleep(120);
-
-      const key = `${job.kind}:${job.id}:monthly`;
-      const url = job.kind === "signal" ? signalUrl(job.id) : trafUrl(job.id);
-
-      const img = await fetchGraphAsDataUrl(url, key);
-
-      const prev = graphMap.get(job.id) || {};
-      if (job.kind === "signal") prev.signal = img;
-      else prev.trafico = img;
-      graphMap.set(job.id, prev);
-      return true;
-    });
+    const total = listAll.length;
 
     const chunk = <T,>(arr: T[], n: number) => {
       const out: T[][] = [];
@@ -1029,8 +693,6 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
       return out;
     };
 
-    const pages = chunk(list, 3);
-    const now = new Date();
     const pillClass = (status: any) => {
       const s = String(status ?? "").toLowerCase();
       if (s === "online") return "online";
@@ -1038,6 +700,12 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
       if (s === "power failed") return "pf";
       return "unk";
     };
+
+    const signalUrl = (id: string) =>
+      `${baseUrl}/onu/get_onu_signal_graph/${encodeURIComponent(id)}/monthly`;
+
+    const trafUrl = (id: string) =>
+      `${baseUrl}/onu/get_onu_traffic_graph/${encodeURIComponent(id)}/monthly`;
 
     const renderGraphBox = (title: string, img: any) => {
       if (img?.ok && img?.dataUrl) {
@@ -1048,7 +716,6 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
           </div>
         `;
       }
-
       return `
         <div class="g">
           <div class="gt">${esc(title)}</div>
@@ -1057,156 +724,257 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
       `;
     };
 
-    const renderCard = (o: any) => {
-      const onuId = String(o?.unique_external_id ?? o?.sn ?? "").trim();
-      const gm = graphMap.get(onuId) || {};
-      return `
-        <div class="card">
-          <div class="head">
-            <div class="left">
-              <div class="name">${esc(o?.name ?? onuId)}</div>
-              <div class="sub">
-                <span class="pill ${pillClass(o?.status)}">${esc(o?.status ?? "-")}</span>
-                <span class="muted">OLT:</span> <b>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</b>
-                <span class="muted">CATV:</span> <b>${esc(o?.catv ?? "-")}</b>
-              </div>
-              <div class="comment"><span class="muted">Comentario:</span> ${esc(o?.address ?? o?.comment ?? "-")}</div>
-            </div>
-            <div class="right">
-              <div class="muted">External ID</div>
-              <div class="idv">${esc(onuId)}</div>
-            </div>
-          </div>
+    const buildPdfForSlice = async (listSlice: any[], sliceStart: number, sliceEnd: number) => {
+      type Job = { kind: "signal" | "trafico"; id: string };
+      const jobs: Job[] = [];
 
-          <div class="grid2">
-            ${renderGraphBox("Señal (monthly)", gm.signal)}
-            ${renderGraphBox("Tráfico (monthly)", gm.trafico)}
-          </div>
-        </div>
-      `;
-    };
+      for (const o of listSlice) {
+        const id = String(o?.unique_external_id ?? o?.sn ?? "").trim();
+        if (!id) continue;
+        jobs.push({ kind: "signal", id });
+        jobs.push({ kind: "trafico", id });
+      }
 
-    const renderPage = (items: any[], idx: number) => `
-      <section class="page">
-        <div class="pageHead">
-          <h1>Reporte UPZ ${esc(upz)} (batch ${batch})</h1>
-          <div class="meta">
-            Generado: ${esc(now.toLocaleString())} |
-            Página ${idx + 1} / ${pages.length} |
-            ONUs UPZ: ${total} |
-            Lote: ${start + 1}-${end}
-          </div>
-        </div>
+      const graphMap = new Map<string, { signal?: any; trafico?: any }>();
 
-        <div class="cards">
-          ${items.map(renderCard).join("")}
-        </div>
-      </section>
-    `;
+      await mapLimit(jobs, CONCURRENCY, async (job) => {
+        await sleep(150);
 
-    const html = `
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <title>Reporte UPZ ${esc(upz)}</title>
-  <style>
-    *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
-    body{ margin:0; color:#111; }
-    .page{ padding:10mm; page-break-after: always; }
-    .page:last-child{ page-break-after: auto; }
+        const key = `${job.kind}:${job.id}:monthly`;
+        const url = job.kind === "signal" ? signalUrl(job.id) : trafUrl(job.id);
 
-    .pageHead{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; }
-    h1{ margin:0; font-size:16px; }
-    .meta{ font-size:10px; color:#555; }
+        const img = await fetchGraphAsDataUrl(url, key);
 
-    .cards{ display:flex; flex-direction:column; gap:8px; }
+        const prev = graphMap.get(job.id) || {};
+        if (job.kind === "signal") prev.signal = img;
+        else prev.trafico = img;
+        graphMap.set(job.id, prev);
 
-    .card{
-      border:1px solid #e5e7eb;
-      border-radius:12px;
-      padding:8px;
-      page-break-inside: avoid;
-    }
-
-    .head{ display:flex; justify-content:space-between; gap:10px; }
-    .name{ font-size:12px; font-weight:800; }
-    .sub{ margin-top:2px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
-    .comment{ margin-top:4px; font-size:10px; color:#111; }
-    .muted{ color:#666; font-size:10px; }
-
-    .right{ min-width:180px; text-align:right; }
-    .idv{ font-weight:800; font-size:10px; word-break:break-all; }
-
-    .pill{
-      display:inline-block; padding:2px 8px; border-radius:999px;
-      font-size:9px; border:1px solid #ddd;
-    }
-    .pill.online{ border-color:#2ecc71; color:#2ecc71; }
-    .pill.los{ border-color:#e74c3c; color:#e74c3c; }
-    .pill.pf{ border-color:#7f8c8d; color:#7f8c8d; }
-    .pill.unk{ border-color:#f1c40f; color:#b98300; }
-
-    .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
-    .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
-    .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
-
-    img{
-      width:100%;
-      height:auto;
-      display:block;
-      max-height:140px;
-      object-fit:contain;
-    }
-
-    .gempty{
-      min-height: 120px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      text-align:center;
-      font-size:9px;
-      color:#666;
-      border:1px dashed #ddd;
-      border-radius:8px;
-      padding:8px;
-      background:#fafafa;
-    }
-  </style>
-</head>
-<body>
-  ${pages.map(renderPage).join("")}
-</body>
-</html>
-    `;
-
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-
-    try {
-      const page = await browser.newPage();
-      page.setDefaultTimeout(0);
-
-      await page.setContent(html, { waitUntil: "domcontentloaded" });
-
-      await page.emulateMediaType("screen");
-
-      const pdf = await page.pdf({
-        format: "A4",
-        landscape: true,
-        printBackground: true,
-        margin: { top: "6mm", right: "6mm", bottom: "6mm", left: "6mm" },
-        scale: 0.9,
+        return true;
       });
 
+      const pages = chunk(listSlice, 3);
+      const now = new Date();
+
+      const renderCard = (o: any) => {
+        const onuId = String(o?.unique_external_id ?? o?.sn ?? "").trim();
+        const gm = graphMap.get(onuId) || {};
+
+        return `
+          <div class="card">
+            <div class="head">
+              <div class="left">
+                <div class="name">${esc(o?.name ?? onuId)}</div>
+                <div class="sub">
+                  <span class="pill ${pillClass(o?.status)}">${esc(o?.status ?? "-")}</span>
+                  <span class="muted">OLT:</span> <b>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</b>
+                  <span class="muted">CATV:</span> <b>${esc(o?.catv ?? "-")}</b>
+                </div>
+                <div class="comment">
+                  <span class="muted">Comentario:</span> ${esc(o?.address ?? o?.comment ?? "-")}
+                </div>
+              </div>
+              <div class="right">
+                <div class="muted">External ID</div>
+                <div class="idv">${esc(onuId || "-")}</div>
+              </div>
+            </div>
+
+            <div class="grid2">
+              ${renderGraphBox("Señal (monthly)", gm.signal)}
+              ${renderGraphBox("Tráfico (monthly)", gm.trafico)}
+            </div>
+          </div>
+        `;
+      };
+
+      const renderPage = (items: any[], idx: number) => `
+        <section class="page">
+          <div class="pageHead">
+            <h1>Reporte UPZ ${esc(upz)} ${onlyMintic ? "(MINTIC)" : ""}</h1>
+            <div class="meta">
+              Generado: ${esc(now.toLocaleString())} |
+              Página ${idx + 1} / ${pages.length} |
+              Total UPZ: ${total} |
+              Rango: ${sliceStart + 1}-${sliceEnd}
+            </div>
+          </div>
+          <div class="cards">${items.map(renderCard).join("")}</div>
+        </section>
+      `;
+
+      const html = `
+        <!doctype html>
+        <html>
+        <head>
+          <meta charset="utf-8"/>
+          <title>Reporte UPZ ${esc(upz)}</title>
+          <style>
+            *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+            body{ margin:0; color:#111; }
+            .page{ padding:10mm; page-break-after: always; }
+            .page:last-child{ page-break-after: auto; }
+
+            .pageHead{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; }
+            h1{ margin:0; font-size:16px; }
+            .meta{ font-size:10px; color:#555; }
+
+            .cards{ display:flex; flex-direction:column; gap:8px; }
+
+            .card{
+              border:1px solid #e5e7eb;
+              border-radius:12px;
+              padding:8px;
+              page-break-inside: avoid;
+            }
+
+            .head{ display:flex; justify-content:space-between; gap:10px; }
+            .name{ font-size:12px; font-weight:800; }
+            .sub{ 
+              margin-top:2px; 
+              font-size:10px; 
+              display:flex; 
+              gap:8px; 
+              align-items:center; 
+              flex-wrap:wrap;
+            }
+            .comment{ 
+              margin-top:4px; 
+              font-size:10px; 
+              color:#111; 
+            }
+            .muted{ 
+              color:#666; 
+              font-size:10px; 
+            }
+
+            .right{ 
+              min-width:180px; 
+              text-align:right; 
+            }
+
+            .idv{ 
+              font-weight:800; 
+              font-size:10px; 
+              word-break:break-all; 
+            }
+
+            .pill{
+              display:inline-block; 
+              padding:2px 8px; 
+              border-radius:999px;
+              font-size:9px; 
+              border:1px solid #ddd;
+            }
+
+            .pill.online{ 
+              border-color:#2ecc71; 
+              color:#2ecc71; 
+            }
+            .pill.los{ border-color:#e74c3c; color:#e74c3c; }
+            .pill.pf{ border-color:#7f8c8d; color:#7f8c8d; }
+            .pill.unk{ border-color:#f1c40f; color:#b98300; }
+
+            .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+            .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
+            .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
+
+            img{
+              width:100%;
+              height:auto;
+              display:block;
+              max-height:220px;
+              object-fit:contain;
+            }
+
+            .gempty{
+              min-height: 170px;
+              display:flex;
+              align-items:center;
+              justify-content:center;
+              text-align:center;
+              font-size:9px;
+              color:#666;
+              border:1px dashed #ddd;
+              border-radius:8px;
+              padding:8px;
+              background:#fafafa;
+            }
+          </style>
+        </head>
+        <body>
+          ${pages.map(renderPage).join("")}
+        </body>
+        </html>
+      `;
+
+      const browser = await puppeteer.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      });
+
+      try {
+        const page = await browser.newPage();
+        page.setDefaultTimeout(0);
+
+        await page.setContent(html, { waitUntil: "domcontentloaded" });
+        await page.emulateMediaType("screen");
+
+        const pdf = await page.pdf({
+          format: "A4",
+          landscape: true,
+          printBackground: true,
+          margin: { top: "6mm", right: "6mm", bottom: "6mm", left: "6mm" },
+          scale: 1,
+        });
+
+        return pdf as Buffer;
+      } finally {
+        await browser.close();
+      }
+    };
+
+    // ====== FULL MERGE (1 SOLO PDF) ======
+    if (merge) {
+      const merged = await PDFDocument.create();
+      const totalBatches = Math.ceil(total / size);
+
+      for (let b = 0; b < totalBatches; b++) {
+        const start = b * size;
+        const end = Math.min(start + size, total);
+        const slice = listAll.slice(start, end);
+
+        const pdfBuf = await buildPdfForSlice(slice, start, end);
+
+        const doc = await PDFDocument.load(pdfBuf);
+        const copied = await merged.copyPages(doc, doc.getPageIndices());
+        copied.forEach((p) => merged.addPage(p));
+      }
+
+      const mergedBytes = await merged.save();
+
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="reporte-upz-${upz}-batch-${batch}.pdf"`);
-      return res.status(200).send(pdf);
-    } finally {
-      await browser.close();
+      res.setHeader("Content-Disposition", `attachment; filename="reporte-upz-${upz}-FULL.pdf"`);
+      return res.status(200).send(Buffer.from(mergedBytes));
     }
+
+    // ====== MODO BATCH MANUAL (opcional) ======
+    const batch = Math.max(0, Number(req.query.batch ?? 0) || 0);
+    const start = batch * size;
+    const end = Math.min(start + size, total);
+    const slice = listAll.slice(start, end);
+
+    if (!slice.length) {
+      return res.status(400).json({
+        message: `Batch fuera de rango. total=${total}, batch=${batch}, size=${size}`,
+      });
+    }
+
+    const pdf = await buildPdfForSlice(slice, start, end);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="reporte-upz-${upz}-batch-${batch}.pdf"`);
+    return res.status(200).send(pdf);
   } catch (e) {
     next(e);
   }
