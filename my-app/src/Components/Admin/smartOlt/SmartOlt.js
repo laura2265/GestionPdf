@@ -30,22 +30,21 @@ function SmartOlt() {
 
   const API_BASE = "http://localhost:3000/api/smart-olt";
     
-    const [batchSize, setBatchSize] = useState(30);
+  const [batchSize, setBatchSize] = useState(30);
+  const [upzRuns, setUpzRuns] = useState(() => {
+    try {
+      const raw = localStorage.getItem("upzRuns_v1");
+      return raw ? JSON.parse(raw) : { lucero: null, tesoro: null };
+    } catch {
+      return { lucero: null, tesoro: null };
+    }
+  });
 
-    const [upzRuns, setUpzRuns] = useState(() => {
-      try {
-        const raw = localStorage.getItem("upzRuns_v1");
-        return raw ? JSON.parse(raw) : { lucero: null, tesoro: null };
-      } catch {
-        return { lucero: null, tesoro: null };
-      }
-    });
-
-    useEffect(() => {
-      try {
-        localStorage.setItem("upzRuns_v1", JSON.stringify(upzRuns));
-      } catch {}
-    }, [upzRuns]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("upzRuns_v1", JSON.stringify(upzRuns));
+    } catch {}
+  }, [upzRuns]);
 
   useEffect(() => {
     const fetchSmartOlts = async () => {
@@ -92,59 +91,55 @@ function SmartOlt() {
   }, [onus]);
 
   const filteredOnus = useMemo(() => {
-  const term = q.trim().toLowerCase();
+    const term = q.trim().toLowerCase();
 
-  return onus.filter((o) => {
-    const addr = String(o?.address ?? "").trim().toLowerCase();
-    if (!addr.includes("mintic")) return false;
+    return onus.filter((o) => {
+      const addr = String(o?.address ?? "").trim().toLowerCase();
+      if (!addr.includes("mintic")) return false;
 
-    if (fOlt) {
-      const val = String(o?.olt_id ?? o?.olt_name ?? "");
-      if (val !== fOlt) return false;
-    }
-
-    if (fBoard && String(o?.board ?? "") !== fBoard) return false;
-    if (fPort && String(o?.port ?? "") !== fPort) return false;
-    if (fZone && String(o?.zone_name ?? "") !== fZone) return false;
-    if (fOdb && String(o?.odb_name ?? "") !== fOdb) return false;
-
-    if (term) {
-      const haystack = [
-        o?.name,
-        o?.sn,
-        o?.unique_external_id,
-        o?.ip_address,
-        o?.zone_name,
-        o?.odb_name,
-        o?.address,
-      ]
-        .map((v) => String(v ?? "").toLowerCase())
-        .join(" | ");
-
-      if (!haystack.includes(term)) return false;
-    }
-
-    return true;
-  });
-}, [onus, q, fOlt, fBoard, fPort, fZone, fOdb]);
-
-    const StatusIcon = ({ status }) => {
-      if (!status) return null;
-
-      switch (status.toLowerCase()) {
-        case "online":
-          return <ImConnection className="status-icon online" title="Online" />;
-
-        case "power failed":
-          return <VscDebugDisconnect className="status-icon power-failed" title="Power Failed" />;
-
-        case "los":
-          return <AiOutlineDisconnect className="status-icon los" title="LOS" />;
-
-        default:
-          return <VscDebugDisconnect className="status-icon unknown" title={status} />;
+      if (fOlt) {
+        const val = String(o?.olt_id ?? o?.olt_name ?? "");
+        if (val !== fOlt) return false;
       }
-    };
+
+      if (fBoard && String(o?.board ?? "") !== fBoard) return false;
+      if (fPort && String(o?.port ?? "") !== fPort) return false;
+      if (fZone && String(o?.zone_name ?? "") !== fZone) return false;
+      if (fOdb && String(o?.odb_name ?? "") !== fOdb) return false;
+
+      if (term) {
+        const haystack = [
+          o?.name,
+          o?.sn,
+          o?.unique_external_id,
+          o?.ip_address,
+          o?.zone_name,
+          o?.odb_name,
+          o?.address,
+        ]
+          .map((v) => String(v ?? "").toLowerCase())
+          .join(" | ");
+
+        if (!haystack.includes(term)) return false;
+      }
+
+      return true;
+    });
+  }, [onus, q, fOlt, fBoard, fPort, fZone, fOdb]);
+
+  const StatusIcon = ({ status }) => {
+    if (!status) return null;
+    switch (status.toLowerCase()) {
+      case "online":
+        return <ImConnection className="status-icon online" title="Online" />;
+      case "power failed":
+        return <VscDebugDisconnect className="status-icon power-failed" title="Power Failed" />;
+      case "los":
+        return <AiOutlineDisconnect className="status-icon los" title="LOS" />;
+      default:
+        return <VscDebugDisconnect className="status-icon unknown" title={status} />;
+    }
+  };
 
   const ceilDiv = (a, b) => Math.ceil(Number(a) / Number(b));
   const createUpzRun = async (upz) => {
@@ -167,70 +162,74 @@ function SmartOlt() {
     return run;
   };
 
-const downloadNextBatch = async (upz) => {
-  try {
-    setError("");
+  const downloadNextBatch = async (upz) => {
+    try {
+      setError("");
 
-    let run = upzRuns[upz];
+      let run = upzRuns[upz];
 
-    if (!run) {
-      run = await createUpzRun(upz);
-    }
+      if (!run) {
+        run = await createUpzRun(upz);
+      }
 
-    const totalBatches = ceilDiv(run.total, run.size);
+      const totalBatches = ceilDiv(run.total, run.size);
 
-    if (run.nextBatch >= totalBatches) {
-      setError(`Ya descargaste todos los lotes de ${upz.toUpperCase()} ✅`);
-      return;
-    }
-
-    const url = new URL(`${API_BASE}/report/pdf-upz/${upz}`);
-    url.searchParams.set("runId", run.runId);
-    url.searchParams.set("batch", String(run.nextBatch));
-    url.searchParams.set("size", String(run.size));
-
-    window.open(url.toString(), "_blank", "noopener,noreferrer");
-
-    setUpzRuns((prev) => ({
-      ...prev,
-      [upz]: { ...prev[upz], nextBatch: prev[upz].nextBatch + 1 },
-    }));
-  } catch (e) {
-    const msg = e?.message || "Error descargando lote";
-
-    if (String(msg).toLowerCase().includes("runid")) {
-      setUpzRuns((prev) => ({ ...prev, [upz]: null }));
-      try {
-        const newRun = await createUpzRun(upz);
-
-        const url = new URL(`${API_BASE}/report/pdf-upz/${upz}`);
-        url.searchParams.set("runId", newRun.runId);
-        url.searchParams.set("batch", "0");
-        url.searchParams.set("size", String(newRun.size));
-
-        window.open(url.toString(), "_blank", "noopener,noreferrer");
-
-        setUpzRuns((prev) => ({
-          ...prev,
-          [upz]: { ...prev[upz], nextBatch: 1 },
-        }));
-        return;
-      } catch (e2) {
-        setError(e2?.message || msg);
+      if (run.nextBatch >= totalBatches) {
+        setError(`Ya descargaste todos los lotes de ${upz.toUpperCase()} ✅`);
         return;
       }
+
+      const url = new URL(`${API_BASE}/report/pdf-upz/${upz}`);
+      url.searchParams.set("runId", run.runId);
+      url.searchParams.set("batch", String(run.nextBatch));
+      url.searchParams.set("size", String(run.size));
+
+      window.open(url.toString(), "_blank", "noopener,noreferrer");
+
+      setUpzRuns((prev) => ({
+        ...prev,
+        [upz]: { ...prev[upz], nextBatch: prev[upz].nextBatch + 1 },
+      }));
+    } catch (e) {
+      const msg = e?.message || "Error descargando lote";
+
+      if (String(msg).toLowerCase().includes("runid")) {
+        setUpzRuns((prev) => ({ ...prev, [upz]: null }));
+        try {
+          const newRun = await createUpzRun(upz);
+
+          const url = new URL(`${API_BASE}/report/pdf-upz/${upz}`);
+          url.searchParams.set("runId", newRun.runId);
+          url.searchParams.set("batch", "0");
+          url.searchParams.set("size", String(newRun.size));
+
+          window.open(url.toString(), "_blank", "noopener,noreferrer");
+
+          setUpzRuns((prev) => ({
+            ...prev,
+            [upz]: { ...prev[upz], nextBatch: 1 },
+          }));
+          return;
+        } catch (e2) {
+          setError(e2?.message || msg);
+          return;
+        }
+      }
+
+      setError(msg);
     }
-
-    setError(msg);
-  }
-};
-
+  };
 
   const resetUpzRun = (upz) => {
     setUpzRuns((prev) => ({ ...prev, [upz]: null }));
   };
 
-
+  const generarReporteONU = (id) => {
+    window.open(
+      `http://localhost:3000/api/smart-olt/report/onu/${encodeURIComponent(id)}`,
+      "_blank"
+    );
+  };
 
   return (
     <div className="smartolt-container">
@@ -388,6 +387,7 @@ const downloadNextBatch = async (upz) => {
                   <td>{o?.authorization_date ?? "-"}</td>
                   <td className="options">
                     <button><Link className="ver"  to={`/smartolt-info-admin/${o?.unique_external_id}`}>ver</Link></button>
+                    <button className="btn" onClick={()=>generarReporteONU(o?.unique_external_id)}>Generar reporte</button>
                   </td>
                 </tr>
               );

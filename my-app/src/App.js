@@ -16,7 +16,6 @@ import ActualizarUser from './Components/Admin/Users/ActualizarUser.js';
 import InformacionUser from './Components/Admin/Users/InformacionUser.js';
 import SmartOlt from './Components/Admin/smartOlt/SmartOlt.js';
 import InformacionIdExternal from './Components/Admin/smartOlt/InformacionId.js';
-import ZonaOnus from './Components/Admin/smartOlt/upzReport.js';
 
 function App() {  
   return (
@@ -53,12 +52,6 @@ function App() {
           <Route path='/crear-user' element={
             <PrivateRouter allowedRoles={[1]}>
               <CrearUser />
-            </PrivateRouter>
-          }/>
-
-          <Route path='/zonas' element={
-            <PrivateRouter allowedRoles={[1]}>
-              <ZonaOnus />
             </PrivateRouter>
           }/>
 
