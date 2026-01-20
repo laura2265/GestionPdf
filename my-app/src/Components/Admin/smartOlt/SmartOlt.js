@@ -26,6 +26,27 @@ function SmartOlt() {
   const [fZone, setFZone] = useState("");
   const [fOdb, setFOdb] = useState("");
 
+
+
+  const API_BASE = "http://localhost:3000/api/smart-olt";
+    
+    const [batchSize, setBatchSize] = useState(30);
+
+    const [upzRuns, setUpzRuns] = useState(() => {
+      try {
+        const raw = localStorage.getItem("upzRuns_v1");
+        return raw ? JSON.parse(raw) : { lucero: null, tesoro: null };
+      } catch {
+        return { lucero: null, tesoro: null };
+      }
+    });
+
+    useEffect(() => {
+      try {
+        localStorage.setItem("upzRuns_v1", JSON.stringify(upzRuns));
+      } catch {}
+    }, [upzRuns]);
+
   useEffect(() => {
     const fetchSmartOlts = async () => {
       try {
@@ -125,6 +146,92 @@ function SmartOlt() {
       }
     };
 
+  const ceilDiv = (a, b) => Math.ceil(Number(a) / Number(b));
+  const createUpzRun = async (upz) => {
+    const url = `${API_BASE}/report/pdf-upz/${upz}/run?mintic=true&refresh=true`;
+
+    const res = await fetch(url, { method: "GET", cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) throw new Error(data?.message || "No se pudo crear el runId");
+
+    const run = {
+      runId: data.runId,
+      total: Number(data.total || 0),
+      size: batchSize,
+      nextBatch: 0,
+      createdAt: Date.now(),
+    };
+
+    setUpzRuns((prev) => ({ ...prev, [upz]: run }));
+    return run;
+  };
+
+const downloadNextBatch = async (upz) => {
+  try {
+    setError("");
+
+    let run = upzRuns[upz];
+
+    if (!run) {
+      run = await createUpzRun(upz);
+    }
+
+    const totalBatches = ceilDiv(run.total, run.size);
+
+    if (run.nextBatch >= totalBatches) {
+      setError(`Ya descargaste todos los lotes de ${upz.toUpperCase()} ✅`);
+      return;
+    }
+
+    const url = new URL(`${API_BASE}/report/pdf-upz/${upz}`);
+    url.searchParams.set("runId", run.runId);
+    url.searchParams.set("batch", String(run.nextBatch));
+    url.searchParams.set("size", String(run.size));
+
+    window.open(url.toString(), "_blank", "noopener,noreferrer");
+
+    setUpzRuns((prev) => ({
+      ...prev,
+      [upz]: { ...prev[upz], nextBatch: prev[upz].nextBatch + 1 },
+    }));
+  } catch (e) {
+    const msg = e?.message || "Error descargando lote";
+
+    if (String(msg).toLowerCase().includes("runid")) {
+      setUpzRuns((prev) => ({ ...prev, [upz]: null }));
+      try {
+        const newRun = await createUpzRun(upz);
+
+        const url = new URL(`${API_BASE}/report/pdf-upz/${upz}`);
+        url.searchParams.set("runId", newRun.runId);
+        url.searchParams.set("batch", "0");
+        url.searchParams.set("size", String(newRun.size));
+
+        window.open(url.toString(), "_blank", "noopener,noreferrer");
+
+        setUpzRuns((prev) => ({
+          ...prev,
+          [upz]: { ...prev[upz], nextBatch: 1 },
+        }));
+        return;
+      } catch (e2) {
+        setError(e2?.message || msg);
+        return;
+      }
+    }
+
+    setError(msg);
+  }
+};
+
+
+  const resetUpzRun = (upz) => {
+    setUpzRuns((prev) => ({ ...prev, [upz]: null }));
+  };
+
+
+
   return (
     <div className="smartolt-container">
       <header className="dashboard-header">
@@ -134,11 +241,52 @@ function SmartOlt() {
           <button className="btn danger" onClick={menu}>
             Volver
           </button>
+          <button
+            className="btn"
+            onClick={() => {
+              const params = new URLSearchParams();
+              if (q.trim()) params.set("q", q.trim());
+            
+              window.open(`http://localhost:3000/api/smart-olt/report/pdf?${params.toString()}`, "_blank");
+            }}
+          >
+            Generar PDF
+          </button>
           <button className="btn danger" onClick={cerrarSesion}>
             Cerrar Sesión
           </button>
         </div>
       </header>
+
+      <div className="ContentReportPdf">
+         <button className="btn" onClick={() => downloadNextBatch("lucero")}>
+          UPZ Lucero PDF
+        </button>
+                
+        <button className="btn danger" onClick={() => resetUpzRun("lucero")}>
+          Reset Lucero
+        </button>
+        
+        <button className="btn" onClick={() => downloadNextBatch("tesoro")}>
+          UPZ Tesoro PDF
+        </button>
+
+        <button className="btn danger" onClick={() => resetUpzRun("tesoro")}>
+          Reset Tesoro
+        </button>
+        
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label style={{ fontSize: 12 }}>Size</label>
+          <input
+            type="number"
+            min={5}
+            max={60}
+            value={batchSize}
+            onChange={(e) => setBatchSize(Math.min(60, Math.max(5, Number(e.target.value) || 60)))}
+            style={{ width: 70 }}
+          />
+        </div>
+      </div>
 
       <div className="barraBusquedaOlt">
         <label>Buscar</label>
@@ -179,13 +327,6 @@ function SmartOlt() {
           ))}
         </select>
 
-        <label>ODB</label>
-        <select value={fOdb} onChange={(e) => setFOdb(e.target.value)}>
-          <option value="">Any</option>
-          {options.odbs.map((v) => (
-            <option key={v} value={v}>{v}</option>
-          ))}
-        </select>
         <button
           className="btn"
           onClick={() => {
@@ -199,34 +340,8 @@ function SmartOlt() {
         >
           Limpiar
         </button>
-        <button
-          className="btn"
-          onClick={() => {
-            const params = new URLSearchParams();
-            if (q.trim()) params.set("q", q.trim());
-
-            window.open(`http://localhost:3000/api/smart-olt/report/pdf?${params.toString()}`, "_blank");
-          }}
-        >
-          Generar PDF
-        </button>
-
-        <button
-          className="btn"
-          onClick={() => window.open("http://localhost:3000/api/smart-olt/report/pdf-upz/lucero", "_blank")}
-        >
-          PDF UPZ Lucero
-        </button>
-                
-        <button
-          className="btn"
-          onClick={() => window.open("http://localhost:3000/api/smart-olt/report/pdf-upz/tesoro", "_blank")}
-        >
-          PDF UPZ Tesoro
-        </button>
-
-
       </div>
+
 
       <div className="contentTableSmartOlt">
         {loading && <p>Cargando ONUs...</p>}

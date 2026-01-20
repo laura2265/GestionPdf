@@ -613,11 +613,110 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
     } finally {
       await browser.close();
     }
+
   } catch (e) {
     next(e);
   }
 });
 
+
+
+
+// ===============================
+// SNAPSHOTS EN MEMORIA (runId)
+// ===============================
+type UpzRun = {
+  upz: "lucero" | "tesoro";
+  ids: string[];          // lista fija ordenada de External IDs
+  createdAt: number;
+  total: number;
+};
+
+const upzRuns = new Map<string, UpzRun>();
+const RUN_TTL_MS = 1000 * 60 * 60 * 2; // 2 horas (ajústalo si quieres)
+
+const cleanupRuns = () => {
+  const now = Date.now();
+  for (const [id, run] of upzRuns.entries()) {
+    if (now - run.createdAt > RUN_TTL_MS) upzRuns.delete(id);
+  }
+};
+
+// ===============================
+// HELPERS FILTRO ROBUSTO
+// ===============================
+const textAll = (o: any) =>
+  `${o?.address ?? ""} ${o?.comment ?? ""} ${o?.name ?? ""} ${o?.zone_name ?? ""}`.toLowerCase();
+
+const isMintic = (o: any) => textAll(o).includes("mintic");
+
+const upzOf = (o: any) => {
+  const t = textAll(o);
+  const grp1 = /lf3\s*-?\s*grp\s*-?\s*1/.test(t) || t.includes("lf3grp1");
+  const grp2 = /lf3\s*-?\s*grp\s*-?\s*2/.test(t) || t.includes("lf3grp2");
+  if (grp1) return "lucero";
+  if (grp2) return "tesoro";
+  return "otros";
+};
+
+// =======================================================
+// 1) RUN: crea snapshot fijo (runId) para NO repetir ONUs
+// =======================================================
+smartOltRouter.get("/report/pdf-upz/:upz/run", async (req, res, next) => {
+  try {
+    cleanupRuns();
+
+    if (!tokenSmart) return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
+
+    const refresh = req.query.refresh === "true";
+    const upz = String(req.params.upz || "").trim().toLowerCase();
+    if (!["lucero", "tesoro"].includes(upz)) {
+      return res.status(400).json({ message: "UPZ inválida. Use: lucero | tesoro" });
+    }
+
+    // Por defecto MINTIC=true (como tu caso)
+    const onlyMintic = String(req.query.mintic ?? "true").toLowerCase() === "true";
+
+    const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
+    if (!r.ok) return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
+
+    const onus = Array.isArray(r.data?.onus) ? r.data.onus : [];
+
+    const listAll = onus
+      .filter((o: any) => (onlyMintic ? isMintic(o) : true))
+      .filter((o: any) => upzOf(o) === upz);
+
+    if (!listAll.length) {
+      return res.status(404).json({ message: `No hay ONUs para UPZ ${upz}${onlyMintic ? " (mintic=true)" : ""}` });
+    }
+
+    // ✅ snapshot estable por externalId/sn
+    const ids = listAll
+      .map((o: any) => String(o?.unique_external_id ?? o?.sn ?? "").trim())
+      .filter(Boolean)
+      .sort((a: string, b: string) => a.localeCompare(b));
+
+    const runId = `${upz}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    upzRuns.set(runId, {
+      upz: upz as any,
+      ids,
+      createdAt: Date.now(),
+      total: ids.length,
+    });
+
+    return res.json({
+      runId,
+      upz,
+      onlyMintic,
+      total: ids.length,
+      expiresInMinutes: Math.round(RUN_TTL_MS / 60000),
+      exampleDownload: `/api/smart_olt/report/pdf-upz/${upz}?runId=${runId}&batch=0&size=30`,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
 
 
 smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
@@ -631,22 +730,14 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
       return res.status(400).json({ message: "UPZ inválida. Use: lucero | tesoro" });
     }
 
-    const merge = String(req.query.merge ?? "true").toLowerCase() === "true";
+    const batch = Math.max(0, Number(req.query.batch ?? 0) || 0);
+    const size = Math.min(60, Math.max(3, Number(req.query.size ?? 60) || 60));
 
-    const size = Math.min(30, Math.max(10, Number(req.query.size ?? 20) || 20));
+    const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
+    if (!r.ok) return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
 
-    const onlyMintic = String(req.query.mintic ?? "false").toLowerCase() === "true";
-    const CONCURRENCY = 2;
-
-    const norm = (v: any) => String(v ?? "").trim().toLowerCase();
-
-    const esc = (s: any) =>
-      String(s ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
+    const raw = Array.isArray(r.data?.onus) ? r.data.onus : [];
+    const onus = raw.map((x: any) => x?.onu_details ?? x);
 
     const textAll = (o: any) =>
       `${o?.address ?? ""} ${o?.comment ?? ""} ${o?.name ?? ""} ${o?.zone_name ?? ""}`.toLowerCase();
@@ -655,43 +746,69 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
 
     const upzOf = (o: any) => {
       const t = textAll(o);
-
       const grp1 = /lf3\s*-?\s*grp\s*-?\s*1/.test(t) || t.includes("lf3grp1");
       const grp2 = /lf3\s*-?\s*grp\s*-?\s*2/.test(t) || t.includes("lf3grp2");
-
       if (grp1) return "lucero";
       if (grp2) return "tesoro";
       return "otros";
     };
 
-    const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
-    if (!r.ok) return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
-
-    const onus = Array.isArray(r.data?.onus) ? r.data.onus : [];
-
-    const listAll = onus
-      .filter((o: any) => (onlyMintic ? isMintic(o) : true))
-      .filter((o: any) => upzOf(o) === upz);
+    const listAll = onus.filter(isMintic).filter((o: any) => upzOf(o) === upz);
 
     if (!listAll.length) {
       return res.status(404).json({
-        message: `No hay ONUs para UPZ ${upz}${onlyMintic ? " (mintic=true)" : ""}`,
-        debug: {
-          totalOnus: onus.length,
-          luceroCount: onus.filter((o: any) => upzOf(o) === "lucero").length,
-          tesoroCount: onus.filter((o: any) => upzOf(o) === "tesoro").length,
-          hint: "Si luceroCount/tesoroCount salen 0, revisa cómo viene el texto LF3GRP en get_all_onus_details.",
-        },
+        message: `No hay ONUs para UPZ ${upz}`,
+        hint: "Revisa que el comentario/address tenga MINTIC y LF3GRP1/LF3GRP2",
       });
     }
 
     const total = listAll.length;
+
+    const start = batch * size;
+    const end = Math.min(start + size, total);
+    const list = listAll.slice(start, end);
+
+    const CONCURRENCY = 2;
+
+    const signalUrl = (id: string) =>
+      `${baseUrl}/onu/get_onu_signal_graph/${encodeURIComponent(id)}/monthly`;
+    const trafUrl = (id: string) =>
+      `${baseUrl}/onu/get_onu_traffic_graph/${encodeURIComponent(id)}/monthly`;
+
+    type Job = { kind: "signal" | "trafico"; id: string };
+    const jobs: Job[] = [];
+
+    for (const o of list) {
+      const id = String(o?.unique_external_id ?? o?.sn ?? "").trim();
+      if (!id) continue;
+      jobs.push({ kind: "signal", id });
+      jobs.push({ kind: "trafico", id });
+    }
+
+    const graphMap = new Map<string, { signal?: any; trafico?: any }>();
+
+    await mapLimit(jobs, CONCURRENCY, async (job) => {
+      await sleep(120);
+      const key = `${job.kind}:${job.id}:monthly`;
+      const url = job.kind === "signal" ? signalUrl(job.id) : trafUrl(job.id);
+
+      const img = await fetchGraphAsDataUrl(url, key);
+
+      const prev = graphMap.get(job.id) || {};
+      if (job.kind === "signal") prev.signal = img;
+      else prev.trafico = img;
+      graphMap.set(job.id, prev);
+      return true;
+    });
 
     const chunk = <T,>(arr: T[], n: number) => {
       const out: T[][] = [];
       for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
       return out;
     };
+
+    const pages = chunk(list, 4);
+    const now = new Date();
 
     const pillClass = (status: any) => {
       const s = String(status ?? "").toLowerCase();
@@ -700,12 +817,6 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
       if (s === "power failed") return "pf";
       return "unk";
     };
-
-    const signalUrl = (id: string) =>
-      `${baseUrl}/onu/get_onu_signal_graph/${encodeURIComponent(id)}/monthly`;
-
-    const trafUrl = (id: string) =>
-      `${baseUrl}/onu/get_onu_traffic_graph/${encodeURIComponent(id)}/monthly`;
 
     const renderGraphBox = (title: string, img: any) => {
       if (img?.ok && img?.dataUrl) {
@@ -724,257 +835,135 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
       `;
     };
 
-    const buildPdfForSlice = async (listSlice: any[], sliceStart: number, sliceEnd: number) => {
-      type Job = { kind: "signal" | "trafico"; id: string };
-      const jobs: Job[] = [];
-
-      for (const o of listSlice) {
-        const id = String(o?.unique_external_id ?? o?.sn ?? "").trim();
-        if (!id) continue;
-        jobs.push({ kind: "signal", id });
-        jobs.push({ kind: "trafico", id });
-      }
-
-      const graphMap = new Map<string, { signal?: any; trafico?: any }>();
-
-      await mapLimit(jobs, CONCURRENCY, async (job) => {
-        await sleep(150);
-
-        const key = `${job.kind}:${job.id}:monthly`;
-        const url = job.kind === "signal" ? signalUrl(job.id) : trafUrl(job.id);
-
-        const img = await fetchGraphAsDataUrl(url, key);
-
-        const prev = graphMap.get(job.id) || {};
-        if (job.kind === "signal") prev.signal = img;
-        else prev.trafico = img;
-        graphMap.set(job.id, prev);
-
-        return true;
-      });
-
-      const pages = chunk(listSlice, 3);
-      const now = new Date();
-
-      const renderCard = (o: any) => {
-        const onuId = String(o?.unique_external_id ?? o?.sn ?? "").trim();
-        const gm = graphMap.get(onuId) || {};
-
-        return `
-          <div class="card">
-            <div class="head">
-              <div class="left">
-                <div class="name">${esc(o?.name ?? onuId)}</div>
-                <div class="sub">
-                  <span class="pill ${pillClass(o?.status)}">${esc(o?.status ?? "-")}</span>
-                  <span class="muted">OLT:</span> <b>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</b>
-                  <span class="muted">CATV:</span> <b>${esc(o?.catv ?? "-")}</b>
-                </div>
-                <div class="comment">
-                  <span class="muted">Comentario:</span> ${esc(o?.address ?? o?.comment ?? "-")}
-                </div>
+    const renderCard = (o: any) => {
+      const onuId = String(o?.unique_external_id ?? o?.sn ?? "").trim();
+      const gm = graphMap.get(onuId) || {};
+      return `
+        <div class="card">
+          <div class="head">
+            <div class="left">
+              <div class="name">${esc(o?.name ?? onuId)}</div>
+              <div class="sub">
+                <span class="pill ${pillClass(o?.status)}">${esc(o?.status ?? "-")}</span>
+                <span class="muted">OLT:</span> <b>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</b>
+                <span class="muted">CATV:</span> <b>${esc(o?.catv ?? "-")}</b>
               </div>
-              <div class="right">
-                <div class="muted">External ID</div>
-                <div class="idv">${esc(onuId || "-")}</div>
-              </div>
+              <div class="comment"><span class="muted">Comentario:</span> ${esc(o?.address ?? o?.comment ?? "-")}</div>
             </div>
-
-            <div class="grid2">
-              ${renderGraphBox("Señal (monthly)", gm.signal)}
-              ${renderGraphBox("Tráfico (monthly)", gm.trafico)}
+            <div class="right">
+              <div class="muted">External ID</div>
+              <div class="idv">${esc(onuId)}</div>
             </div>
           </div>
-        `;
-      };
 
-      const renderPage = (items: any[], idx: number) => `
-        <section class="page">
-          <div class="pageHead">
-            <h1>Reporte UPZ ${esc(upz)} ${onlyMintic ? "(MINTIC)" : ""}</h1>
-            <div class="meta">
-              Generado: ${esc(now.toLocaleString())} |
-              Página ${idx + 1} / ${pages.length} |
-              Total UPZ: ${total} |
-              Rango: ${sliceStart + 1}-${sliceEnd}
-            </div>
+          <div class="grid2">
+            ${renderGraphBox("Señal (monthly)", gm.signal)}
+            ${renderGraphBox("Tráfico (monthly)", gm.trafico)}
           </div>
-          <div class="cards">${items.map(renderCard).join("")}</div>
-        </section>
+        </div>
       `;
-
-      const html = `
-        <!doctype html>
-        <html>
-        <head>
-          <meta charset="utf-8"/>
-          <title>Reporte UPZ ${esc(upz)}</title>
-          <style>
-            *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
-            body{ margin:0; color:#111; }
-            .page{ padding:10mm; page-break-after: always; }
-            .page:last-child{ page-break-after: auto; }
-
-            .pageHead{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; }
-            h1{ margin:0; font-size:16px; }
-            .meta{ font-size:10px; color:#555; }
-
-            .cards{ display:flex; flex-direction:column; gap:8px; }
-
-            .card{
-              border:1px solid #e5e7eb;
-              border-radius:12px;
-              padding:8px;
-              page-break-inside: avoid;
-            }
-
-            .head{ display:flex; justify-content:space-between; gap:10px; }
-            .name{ font-size:12px; font-weight:800; }
-            .sub{ 
-              margin-top:2px; 
-              font-size:10px; 
-              display:flex; 
-              gap:8px; 
-              align-items:center; 
-              flex-wrap:wrap;
-            }
-            .comment{ 
-              margin-top:4px; 
-              font-size:10px; 
-              color:#111; 
-            }
-            .muted{ 
-              color:#666; 
-              font-size:10px; 
-            }
-
-            .right{ 
-              min-width:180px; 
-              text-align:right; 
-            }
-
-            .idv{ 
-              font-weight:800; 
-              font-size:10px; 
-              word-break:break-all; 
-            }
-
-            .pill{
-              display:inline-block; 
-              padding:2px 8px; 
-              border-radius:999px;
-              font-size:9px; 
-              border:1px solid #ddd;
-            }
-
-            .pill.online{ 
-              border-color:#2ecc71; 
-              color:#2ecc71; 
-            }
-            .pill.los{ border-color:#e74c3c; color:#e74c3c; }
-            .pill.pf{ border-color:#7f8c8d; color:#7f8c8d; }
-            .pill.unk{ border-color:#f1c40f; color:#b98300; }
-
-            .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
-            .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
-            .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
-
-            img{
-              width:100%;
-              height:auto;
-              display:block;
-              max-height:220px;
-              object-fit:contain;
-            }
-
-            .gempty{
-              min-height: 170px;
-              display:flex;
-              align-items:center;
-              justify-content:center;
-              text-align:center;
-              font-size:9px;
-              color:#666;
-              border:1px dashed #ddd;
-              border-radius:8px;
-              padding:8px;
-              background:#fafafa;
-            }
-          </style>
-        </head>
-        <body>
-          ${pages.map(renderPage).join("")}
-        </body>
-        </html>
-      `;
-
-      const browser = await puppeteer.launch({
-        headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      });
-
-      try {
-        const page = await browser.newPage();
-        page.setDefaultTimeout(0);
-
-        await page.setContent(html, { waitUntil: "domcontentloaded" });
-        await page.emulateMediaType("screen");
-
-        const pdf = await page.pdf({
-          format: "A4",
-          landscape: true,
-          printBackground: true,
-          margin: { top: "6mm", right: "6mm", bottom: "6mm", left: "6mm" },
-          scale: 1,
-        });
-
-        return pdf as Buffer;
-      } finally {
-        await browser.close();
-      }
     };
 
-    // ====== FULL MERGE (1 SOLO PDF) ======
-    if (merge) {
-      const merged = await PDFDocument.create();
-      const totalBatches = Math.ceil(total / size);
+    const renderPage = (items: any[], idx: number) => `
+      <section class="page">
+        <div class="pageHead">
+          <h1>Reporte UPZ ${esc(upz)} (${batch})</h1>
+          <div class="meta">
+            Generado: ${esc(now.toLocaleString())} |
+            Página ${idx + 1} / ${pages.length} |
+            ONUs UPZ: ${total}
+          </div>
+        </div>
 
-      for (let b = 0; b < totalBatches; b++) {
-        const start = b * size;
-        const end = Math.min(start + size, total);
-        const slice = listAll.slice(start, end);
+        <div class="cards">
+          ${items.map(renderCard).join("")}
+        </div>
+      </section>
+    `;
 
-        const pdfBuf = await buildPdfForSlice(slice, start, end);
+    const html = `
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Reporte UPZ ${esc(upz)}</title>
+  <style>
+    *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+    body{ margin:0; color:#111; }
+    .page{ padding:10mm; page-break-after: always; }
+    .page:last-child{ page-break-after: auto; }
 
-        const doc = await PDFDocument.load(pdfBuf);
-        const copied = await merged.copyPages(doc, doc.getPageIndices());
-        copied.forEach((p) => merged.addPage(p));
-      }
+    .pageHead{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; }
+    h1{ margin:0; font-size:16px; }
+    .meta{ font-size:10px; color:#555; }
 
-      const mergedBytes = await merged.save();
+    .cards{ display:flex; flex-direction:column; gap:8px; }
+
+    .card{ border:1px solid #e5e7eb; border-radius:12px; padding:8px; page-break-inside: avoid; break-inside: avoid; }
+
+    .head{ display:flex; justify-content:space-between; gap:10px; }
+    .name{ font-size:12px; font-weight:800; }
+    .sub{ margin-top:2px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+    .comment{ margin-top:4px; font-size:10px; color:#111; }
+    .muted{ color:#666; font-size:10px; }
+
+    .right{ min-width:180px; text-align:right; }
+    .idv{ font-weight:800; font-size:10px; word-break:break-all; }
+
+    .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:9px; border:1px solid #ddd; }
+    .pill.online{ border-color:#2ecc71; color:#2ecc71; }
+    .pill.los{ border-color:#e74c3c; color:#e74c3c; }
+    .pill.pf{ border-color:#7f8c8d; color:#7f8c8d; }
+    .pill.unk{ border-color:#f1c40f; color:#b98300; }
+
+    .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+    .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
+    .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
+
+    img{ width:100%; height:auto; display:block; max-height:220px; object-fit:contain; }
+
+    .gempty{
+      min-height: 170px;
+      display:flex; align-items:center; justify-content:center;
+      text-align:center; font-size:9px; color:#666;
+      border:1px dashed #ddd; border-radius:8px; padding:8px; background:#fafafa;
+    }
+  </style>
+</head>
+<body>
+  ${pages.map(renderPage).join("")}
+</body>
+</html>
+    `;
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+
+    try {
+      const page = await browser.newPage();
+      page.setDefaultTimeout(0);
+      await page.setContent(html, { waitUntil: "domcontentloaded" });
+      await page.emulateMediaType("screen");
+
+      const pdf = await page.pdf({
+        format: "A4",
+        landscape: true,
+        printBackground: true,
+        margin: { top: "6mm", right: "6mm", bottom: "6mm", left: "6mm" },
+        scale: 0.9,
+      });
 
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="reporte-upz-${upz}-FULL.pdf"`);
-      return res.status(200).send(Buffer.from(mergedBytes));
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="reporte-upz-${upz}-batch-${batch}.pdf"`
+      );
+      return res.status(200).send(pdf);
+    } finally {
+      await browser.close();
     }
-
-    // ====== MODO BATCH MANUAL (opcional) ======
-    const batch = Math.max(0, Number(req.query.batch ?? 0) || 0);
-    const start = batch * size;
-    const end = Math.min(start + size, total);
-    const slice = listAll.slice(start, end);
-
-    if (!slice.length) {
-      return res.status(400).json({
-        message: `Batch fuera de rango. total=${total}, batch=${batch}, size=${size}`,
-      });
-    }
-
-    const pdf = await buildPdfForSlice(slice, start, end);
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="reporte-upz-${upz}-batch-${batch}.pdf"`);
-    return res.status(200).send(pdf);
   } catch (e) {
     next(e);
   }

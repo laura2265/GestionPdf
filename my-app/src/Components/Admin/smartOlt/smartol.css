@@ -91,6 +91,10 @@ td .status-icon {
   font-size: 14px;
 }
 
+.btn1{
+  width: 52%;
+}
+
 .onu-grid{
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -520,4 +524,14 @@ td .status-icon {
   .onu-row span{
     white-space: normal;
   }
+}
+
+.ContentReportPdf{
+  display: flex;
+  justify-content: space-around;
+  margin: 0 5rem;
+}
+
+.ContentReportPdf button{
+  margin: 0 2rem;
 }
