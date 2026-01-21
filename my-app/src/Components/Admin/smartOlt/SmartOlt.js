@@ -167,13 +167,11 @@ function SmartOlt() {
       setError("");
 
       let run = upzRuns[upz];
-
       if (!run) {
         run = await createUpzRun(upz);
       }
 
       const totalBatches = ceilDiv(run.total, run.size);
-
       if (run.nextBatch >= totalBatches) {
         setError(`Ya descargaste todos los lotes de ${upz.toUpperCase()} ✅`);
         return;
@@ -190,6 +188,7 @@ function SmartOlt() {
         ...prev,
         [upz]: { ...prev[upz], nextBatch: prev[upz].nextBatch + 1 },
       }));
+
     } catch (e) {
       const msg = e?.message || "Error descargando lote";
 

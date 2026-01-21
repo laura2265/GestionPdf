@@ -109,9 +109,10 @@ export default function InformacionUser() {
   if (!user) return <div className="alert">Usuario no encontrado</div>;
 
   const roleNames = roles.map(r => r.name || r.role_name || r.nombre || r.roles?.name || `Rol ${r.id}`).join(", ") || "—";
-const Usuarios=()=>{
+  const Usuarios=()=>{
     navigate("/admin-users")
   }
+
   return (
     <div className="user-overview">
         <header className="dashboard-header">

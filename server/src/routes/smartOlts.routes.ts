@@ -738,189 +738,222 @@ smartOltRouter.get("/report/onu/:id", async (req, res, next) => {
     };
 
     const html = `
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Reporte ONU - ${esc(fullName)}</title>
-  <style>
-    *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
-    body{ margin:0; color:#111; }
-    .page{ padding:12mm; }
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Reporte ONU - ${esc(fullName)}</title>
+          <style>
+            *{ 
+                box-sizing:border-box; 
+                font-family: Arial, Helvetica, sans-serif; 
+            }
 
-    .header{
-      border:1px solid #e5e7eb;
-      border-radius:16px;
-      padding:10px 12px;
-      margin-bottom:10px;
-    }
-    .hTop{
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      gap:12px;
-    }
-    .title{
-      margin:0;
-      font-size:18px;
-      font-weight:900;
-      line-height:1.15;
-    }
-    .subtitle{
-      margin-top:4px;
-      font-size:12px;
-      color:#444;
-    }
-    .meta{
-      font-size:11px;
-      color:#666;
-      text-align:right;
-      white-space:nowrap;
-    }
-    .badge{
-      display:inline-block;
-      margin-top:6px;
-      font-size:11px;
-      padding:4px 10px;
-      border-radius:999px;
-      border:1px solid #ddd;
-      font-weight:800;
-    }
+            body{ 
+              margin:0; color:#111; 
+            }
 
-    .infoGrid{
-      margin-top:10px;
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:10px;
-    }
-    .card{
-      border:1px solid #e5e7eb;
-      border-radius:14px;
-      padding:10px 12px;
-      min-height: 96px;
-    }
-    .row{
-      display:flex;
-      justify-content:space-between;
-      gap:12px;
-      padding:6px 0;
-      border-bottom:1px dashed #eee;
-      font-size:12px;
-    }
-    .row:last-child{ border-bottom:0; }
-    .k{ color:#666; }
-    .v{ font-weight:900; color:#111; text-align:right; }
+            .page{ 
+              padding:12mm; 
+            }
 
-    .graphs{
-      margin-top:10px;
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:10px;
-    }
-    .gcard{
-      border:1px solid #e5e7eb;
-      border-radius:14px;
-      padding:10px;
-      page-break-inside: avoid;
-    }
-    .gt{
-      font-size:13px;
-      font-weight:900;
-      margin-bottom:8px;
-    }
-    .imgwrap{
-      border:1px solid #e5e7eb;
-      border-radius:12px;
-      padding:8px;
-      background:#fff;
-    }
-    img{
-      width:100%;
-      height:auto;
-      display:block;
-      max-height: 320px;
-      object-fit: contain;
-    }
-    .gempty{
-      min-height: 260px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      text-align:center;
-      font-size:12px;
-      color:#666;
-      border:1px dashed #ddd;
-      border-radius:12px;
-      padding:14px;
-      background:#fafafa;
-    }
+            .header{
+              border:1px solid #e5e7eb;
+              border-radius:16px;
+              padding:10px 12px;
+              margin-bottom:10px;
+            }
 
-    .foot{
-      margin-top:10px;
-      font-size:10px;
-      color:#666;
-    }
-  </style>
-</head>
+            .hTop{
+              display:flex;
+              justify-content:space-between;
+              align-items:flex-start;
+              gap:12px;
+            }
 
-<body>
-  <section class="page">
-    <div class="header">
-      <div class="hTop">
-        <div>
-          <h1 class="title">UPZ ${esc(upz)} — ${esc(fullName)}</h1>
-          <div class="subtitle">Servicio: <b>${esc(serviceUser)}</b> &nbsp;|&nbsp; External ID: <b>${esc(id)}</b></div>
-          <span class="badge">Estado: ${esc(estado)}</span>
-        </div>
-        <div class="meta">
-          Generado: <b>${esc(now.toLocaleString())}</b><br/>
-          Fuente: <b>${esc(detailsR.fromCache ? "Cache" : "Live")}</b>
-          ${detailsR.cachedAt ? `<br/>CacheAt: ${esc(new Date(detailsR.cachedAt).toLocaleString())}` : ""}
-        </div>
-      </div>
+            .title{
+              margin:0;
+              font-size:18px;
+              font-weight:900;
+              line-height:1.15;
+            }
 
-      <div class="infoGrid">
-        <div class="card">
-          ${[
-            ["OLT", olt],
-            ["Zona", zona],
-            ["TV", tv],
-          ]
-            .map(
-              ([k, v]) =>
-                `<div class="row"><div class="k">${esc(k)}</div><div class="v">${esc(
-                  (v as any) ?? "-"
-                )}</div></div>`
-            )
-            .join("")}
-        </div>
+            .subtitle{
+              margin-top:4px;
+              font-size:12px;
+              color:#444;
+            }
 
-        <div class="card">
-          <div class="row">
-            <div class="k">Comentario</div>
-            <div class="v" style="max-width: 420px; text-align:right; word-break:break-word;">
-              ${esc(comentario)}
+            .meta{
+              font-size:11px;
+              color:#666;
+              text-align:right;
+              white-space:nowrap;
+            }
+
+            .badge{
+              display:inline-block;
+              margin-top:6px;
+              font-size:11px;
+              padding:4px 10px;
+              border-radius:999px;
+              border:1px solid #ddd;
+              font-weight:800;
+            }
+
+            .infoGrid{
+              margin-top:10px;
+              display:grid;
+              grid-template-columns: 1fr 1fr;
+              gap:10px;
+            }
+
+            .card{
+              border:1px solid #e5e7eb;
+              border-radius:14px;
+              padding:10px 12px;
+              min-height: 96px;
+            }
+
+            .row{
+              display:flex;
+              justify-content:space-between;
+              gap:12px;
+              padding:6px 0;
+              border-bottom:1px dashed #eee;
+              font-size:12px;
+            }
+
+            .row:last-child{ 
+              border-bottom:0; 
+            }
+
+            .k{ 
+              color:#666; 
+            }
+
+            .v{ 
+              font-weight:900; 
+              color:#111; 
+              text-align:right; 
+            }
+
+            .graphs{
+              margin-top:10px;
+              display:grid;
+              grid-template-columns: 1fr 1fr;
+              gap:10px;
+            }
+
+            .gcard{
+              border:1px solid #e5e7eb;
+              border-radius:14px;
+              padding:10px;
+              page-break-inside: avoid;
+            }
+            
+            .gt{
+              font-size:13px;
+              font-weight:900;
+              margin-bottom:8px;
+            }
+
+            .imgwrap{
+              border:1px solid #e5e7eb;
+              border-radius:12px;
+              padding:8px;
+              background:#fff;
+            }
+
+            img{
+              width:100%;
+              height:auto;
+              display:block;
+              max-height: 320px;
+              object-fit: contain;
+            }
+
+            .gempty{
+              min-height: 260px;
+              display:flex;
+              align-items:center;
+              justify-content:center;
+              text-align:center;
+              font-size:12px;
+              color:#666;
+              border:1px dashed #ddd;
+              border-radius:12px;
+              padding:14px;
+              background:#fafafa;
+            }
+
+            .foot{
+              margin-top:10px;
+              font-size:10px;
+              color:#666;
+            }
+          </style>
+        </head>
+
+        <body>
+          <section class="page">
+            <div class="header">
+              <div class="hTop">
+                <div>
+                  <h1 class="title">UPZ ${esc(upz)} — ${esc(fullName)}</h1>
+                  <div class="subtitle">Servicio: <b>${esc(serviceUser)}</b> &nbsp;|&nbsp; External ID: <b>${esc(id)}</b></div>
+                  <span class="badge">Estado: ${esc(estado)}</span> 
+                </div>
+
+                <div class="meta">
+                  Generado: <b>${esc(now.toLocaleString())}</b><br/>
+                  Fuente: <b>${esc(detailsR.fromCache ? "Cache" : "Live")}</b>
+                  ${detailsR.cachedAt ? `<br/>CacheAt: ${esc(new Date(detailsR.cachedAt).toLocaleString())}` : ""}
+                </div>
+              </div>
+
+              <div class="infoGrid">
+                <div class="card">
+                  ${[
+                    ["OLT", olt],
+                    ["Zona", zona],
+                    ["TV", tv],
+                  ]
+                    .map(
+                      ([k, v]) =>
+                        `<div class="row"><div class="k">${esc(k)}</div><div class="v">${esc(
+                          (v as any) ?? "-"
+                        )}</div></div>`
+                    )
+                    .join("")}
+                </div>
+
+                <div class="card">
+                  <div class="row">
+                    <div class="k">Comentario</div>
+                    <div class="v" style="max-width: 420px; text-align:right; word-break:break-word;">
+                      ${esc(comentario)}
+                    </div>
+                  </div>
+                  <div class="row">
+                    <div class="k">Fecha reporte</div>
+                    <div class="v">${esc(now.toLocaleString())}</div>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="row">
-            <div class="k">Fecha reporte</div>
-            <div class="v">${esc(now.toLocaleString())}</div>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <div class="graphs">
-      ${renderGraph("Señal (monthly)", signal)}
-      ${renderGraph("Tráfico (monthly)", trafico)}
-    </div>
+            <div class="graphs">
+              ${renderGraph("Señal (monthly)", signal)}
+              ${renderGraph("Tráfico (monthly)", trafico)}
+            </div>
 
-    <div class="foot">
-      Nota: si aparece “Sin datos / Sin imagen”, SmartOLT pudo devolver vacío o estar limitado (403/429).
-    </div>
-  </section>
-</body>
-</html>
+            <div class="foot">
+              Nota: si aparece “Sin datos / Sin imagen”, SmartOLT pudo devolver vacío o estar limitado (403/429).
+            </div>
+          </section>
+        </body>
+      </html>
     `;
 
     const browser = await puppeteer.launch({
