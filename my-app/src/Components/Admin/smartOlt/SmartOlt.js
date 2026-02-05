@@ -1,12 +1,27 @@
 import { Link, useNavigate } from "react-router-dom";
 import "./smartol.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ImConnection } from "react-icons/im";
 import { AiOutlineDisconnect } from "react-icons/ai";
 import { VscDebugDisconnect } from "react-icons/vsc";
+import Dropdown from 'react-bootstrap/Dropdown';
 
 function SmartOlt() {
   const navigate = useNavigate();
+  const [openReportes, setOpenReportes] = useState(false);
+  const reportesRef = useRef(null);
+  
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (reportesRef.current && !reportesRef.current.contains(e.target)) {
+        setOpenReportes(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
 
   const menu = () => navigate("/admin");
   const cerrarSesion = () => {
@@ -29,7 +44,7 @@ function SmartOlt() {
 
 
   const API_BASE = "http://localhost:3000/api/smart-olt";
-    
+
   const [batchSize, setBatchSize] = useState(30);
   const [upzRuns, setUpzRuns] = useState(() => {
     try {
@@ -181,7 +196,7 @@ function SmartOlt() {
       url.searchParams.set("runId", run.runId);
       url.searchParams.set("batch", String(run.nextBatch));
       url.searchParams.set("size", String(run.size));
-
+ 
       window.open(url.toString(), "_blank", "noopener,noreferrer");
 
       setUpzRuns((prev) => ({
@@ -219,9 +234,6 @@ function SmartOlt() {
     }
   };
 
-  const resetUpzRun = (upz) => {
-    setUpzRuns((prev) => ({ ...prev, [upz]: null }));
-  };
 
   const generarReporteONU = (id) => {
     window.open(
@@ -235,56 +247,43 @@ function SmartOlt() {
       <header className="dashboard-header">
         <h1 className="dashboard-title">SmartOlt Configuradas</h1>
 
-        <div className="header-actions">
-          <button className="btn danger" onClick={menu}>
-            Volver
-          </button>
+        <div className="header-smart">
+          
+          <div className="dropdown-reportes">
+            <button className="btnReporte">
+              Reportes ▾
+            </button>
+
+            <div className="dropdown-reportes-menu">
+              <button onClick={() => navigate("/reportes")}>
+                Reporte por UPZ
+              </button>
+
+              <button onClick={() => navigate("/reportes/meta")}>
+                Reporte por Meta
+              </button>
+            </div>
+          </div>
+
           <button
-            className="btn"
+            className="btnGenerar"
             onClick={() => {
               const params = new URLSearchParams();
               if (q.trim()) params.set("q", q.trim());
-            
+
               window.open(`http://localhost:3000/api/smart-olt/report/pdf?${params.toString()}`, "_blank");
             }}
           >
             Generar PDF
           </button>
-          <button className="btn danger" onClick={cerrarSesion}>
-            Cerrar Sesión
-          </button>
+
+          
+          <button className="btnVolver" onClick={menu}>
+            Volver
+          </button>      
+          
         </div>
       </header>
-
-      <div className="ContentReportPdf">
-         <button className="btn" onClick={() => downloadNextBatch("lucero")}>
-          UPZ Lucero PDF
-        </button>
-                
-        <button className="btn danger" onClick={() => resetUpzRun("lucero")}>
-          Reset Lucero
-        </button>
-        
-        <button className="btn" onClick={() => downloadNextBatch("tesoro")}>
-          UPZ Tesoro PDF
-        </button>
-
-        <button className="btn danger" onClick={() => resetUpzRun("tesoro")}>
-          Reset Tesoro
-        </button>
-        
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <label style={{ fontSize: 12 }}>Size</label>
-          <input
-            type="number"
-            min={5}
-            max={60}
-            value={batchSize}
-            onChange={(e) => setBatchSize(Math.min(60, Math.max(5, Number(e.target.value) || 60)))}
-            style={{ width: 70 }}
-          />
-        </div>
-      </div>
 
       <div className="barraBusquedaOlt">
         <label>Buscar</label>
@@ -294,29 +293,6 @@ function SmartOlt() {
           onChange={(e) => setQ(e.target.value)}
         />
 
-        <label>OLT</label>
-        <select value={fOlt} onChange={(e) => setFOlt(e.target.value)}>
-          <option value="">Any</option>
-          {options.olts.map((v) => (
-            <option key={v} value={v}>{v}</option>
-          ))}
-        </select>
-
-        <label>Board</label>
-        <select value={fBoard} onChange={(e) => setFBoard(e.target.value)}>
-          <option value="">Any</option>
-          {options.boards.map((v) => (
-            <option key={v} value={v}>{v}</option>
-          ))}
-        </select>
-
-        <label>Port</label>
-        <select value={fPort} onChange={(e) => setFPort(e.target.value)}>
-          <option value="">Any</option>
-          {options.ports.map((v) => (
-            <option key={v} value={v}>{v}</option>
-          ))}
-        </select>
         <label>Zona</label>
         <select value={fZone} onChange={(e) => setFZone(e.target.value)}>
           <option value="">Any</option>
@@ -326,7 +302,7 @@ function SmartOlt() {
         </select>
 
         <button
-          className="btn"
+          className="botonLimpiar"
           onClick={() => {
             setQ("");
             setFOlt("");
@@ -339,7 +315,6 @@ function SmartOlt() {
           Limpiar
         </button>
       </div>
-
 
       <div className="contentTableSmartOlt">
         {loading && <p>Cargando ONUs...</p>}

@@ -136,53 +136,82 @@ async function fetchWithCache(
 ) {
   const cached = getCached(key);
 
+  // 1) Si no piden refresh y hay cache → responde cache
   if (!opts.refresh && cached) {
     return { ok: true, fromCache: true, cachedAt: cached.at, data: cached.data };
   }
 
-  const resp = await fetch(url, {
-    method: "GET",
-    headers: {
-      "X-Token": tokenSmart ?? "",
-      Accept: "application/json",
-    },
-  });
+  // 2) Timeout controlado (sube a 25s para redes lentas)
+  const controller = new AbortController();
+  const timeoutMs = 25_000;
+  const t = setTimeout(() => controller.abort(), timeoutMs);
 
-  const data = await resp.json().catch(() => ({}));
+  try {
+    const resp = await fetch(url, {
+      method: "GET",
+      headers: {
+        "X-Token": tokenSmart ?? "",
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
 
-  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+
+    // 3) Si SmartOLT respondió pero NO ok: usa cache si existe
+    if (!resp.ok) {
+      if (cached) {
+        return {
+          ok: true,
+          fromCache: true,
+          cachedAt: cached.at,
+          data: cached.data,
+          smartOltError: data,
+          note: "SmartOLT error, serving cached data",
+        };
+      }
+
+      // Caso típico que tú ya manejabas (403)
+      if (resp.status === 403) {
+        return {
+          ok: true,
+          fromCache: false,
+          cachedAt: null,
+          data: null,
+          smartOltError: data,
+          note: "SmartOLT blocked/limit. Try later.",
+        };
+      }
+
+      return { ok: false, status: resp.status, data };
+    }
+
+    // 4) OK: cachea y retorna
+    setCached(key, data);
+    return { ok: true, fromCache: false, cachedAt: Date.now(), data };
+  } catch (err: any) {
+    // 5) Aquí caen los ConnectTimeout / DNS / ECONNRESET / AbortError
     if (cached) {
       return {
         ok: true,
         fromCache: true,
         cachedAt: cached.at,
         data: cached.data,
-        smartOltError: data,
-        note: "SmartOLT limit/failure, serving cached data",
-      };
-    }
-
-    if (resp.status === 403) {
-      return {
-        ok: true,
-        fromCache: false,
-        cachedAt: null,
-        data: null,
-        smartOltError: data,
-        note: "SmartOLT blocked by hourly limit. Try later.",
+        networkError: String(err?.message || err),
+        note: "Network failure to SmartOLT, serving cached data",
       };
     }
 
     return {
       ok: false,
-      status: resp.status,
-      data,
+      status: 504,
+      data: { message: "No se pudo conectar con SmartOLT", error: String(err?.message || err) },
     };
+  } finally {
+    clearTimeout(t);
   }
-
-  setCached(key, data);
-  return { ok: true, fromCache: false, cachedAt: Date.now(), data };
 }
+
 
 
 smartOltRouter.get("/onu-get", async (req, res, next) => {
@@ -408,7 +437,7 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
     const lucero = filtered.filter((o: any) => getUpz(o) === "Lucero");
     const tesoro = filtered.filter((o: any) => getUpz(o) === "Tesoro");
     const otras  = filtered.filter((o: any) => getUpz(o) === "Otras");
-
+ 
     const PAGE_SIZE = 2000;
 
     const chunk = <T,>(arr: T[], size: number) => {
@@ -506,9 +535,24 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
             .pf{ border-left:6px solid #95a5a6; }
             .unk{ border-left:6px solid #dfdf35; }
             .table-wrap{ margin-top:16px; }
-            table{ width:100%; border-collapse: collapse; font-size:11px; }
-            thead th{ text-align:left; padding:8px; background:#f6f7f9; border-bottom:1px solid #e5e7eb; }
-            tbody td{ padding:8px; border-bottom:1px solid #eee; vertical-align:top; }
+            table{
+              width:100%; 
+              border-collapse: collapse; 
+              font-size:11px; 
+            }
+
+            thead th{ 
+              text-align:left; 
+              padding:8px; 
+              background:#f6f7f9; 
+              border-bottom:1px solid #e5e7eb; 
+            }
+
+            tbody td{ 
+              padding:8px; 
+              border-bottom:1px solid #eee; 
+              vertical-align:top; 
+            }
 
             .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:10px; border:1px solid #ddd; }
             .pill.online{ border-color:#2ecc71; color:#2ecc71; }
@@ -532,7 +576,7 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
             }
 
             .section{ 
-              margin-top: 18px; 
+              margin-top: 1 8px; 
             }
 
             .section-title{
@@ -578,7 +622,7 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
             ${renderSection("UPZ Lucero (MINTIC LF3GRP1)", lucero)}
             ${renderSection("UPZ Tesoro (MINTIC LF3GRP2)", tesoro)}
             ${otras.length ? renderSection("Otras (MINTIC sin LF3GRP1/2)", otras) : ""}
-          </div>  
+          </div>
 
           <div class="foot">
             Nota: se organizan por UPZ según el comentario/address (LF3GRP1=Lucero, LF3GRP2=Tesoro).

@@ -8,7 +8,10 @@
 
 .barraBusquedaOlt{
     display: flex;
+    background-color: #e9e9e9;
     margin: 1rem 5rem;
+    padding: 1rem 1rem 0 ;
+    border-radius: 12px;
 }
 
 .barraBusquedaOlt input, select{
@@ -384,6 +387,33 @@ td .status-icon {
   display: flex;
 }
 
+.header-smart{
+  display: flex;
+  width: 40%;
+}
+
+.header-smart .btnVolver{
+  background-color: #333;
+  margin: 11px;
+}
+
+.header-smart .btnReporte{
+
+  background-color: #333;
+  margin: 11px;
+}
+
+.header-smart .btnGenerar{
+  background-color: #eae9e9;
+  color:  #333;
+  border: 1px solid #333;
+  margin: 12px 2rem;
+  width: 35%;
+}
+.header-smart .btnVolver{
+  width: 20%;
+}
+
 @media (max-width: 1024px){
   .onu-grid{
     grid-template-columns: 1fr;
@@ -404,10 +434,10 @@ td .status-icon {
     font-size: 22px;
   }
 
-  .header-actions{
+  .header-smart{
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 9px;
     justify-content: flex-end;
   }
 
@@ -534,4 +564,92 @@ td .status-icon {
 
 .ContentReportPdf button{
   margin: 0 2rem;
+}
+
+.ver{
+  color: #ccc;
+}
+
+.barraBusquedaOlt .botonLimpiar{
+  width: 12%;
+  position: relative;
+  top: -12px;
+}
+
+.dropdown{
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-toggle{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.caret{
+  opacity: .85;
+  font-size: 14px;
+}
+
+/* =========================
+   Dropdown Reportes (Hover)
+========================= */
+
+.dropdown-reportes {
+  position: relative;
+  display: inline-block;
+}
+
+/* Menú oculto por defecto */
+.dropdown-reportes-menu {
+  position: absolute;
+  top: calc(100% -4px);
+  left: 0;
+
+  min-width: 220px;
+  padding: 6px;
+
+  background: #0f1a2e;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0,0,0,.35);
+
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+  
+  z-index: 2000;
+}
+
+/* 👇 HOVER REAL */
+.dropdown-reportes:hover .dropdown-reportes-menu {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* Botones internos */
+.dropdown-reportes-menu button {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #fff;
+
+  padding: 10px 12px;
+  text-align: left;
+  border-radius: 10px;
+
+  cursor: pointer;
+  font-size: 14px;
+
+  transition: background 120ms ease;
+}
+
+.dropdown-reportes-menu button:hover {
+  background: rgba(255,255,255,0.08);
 }

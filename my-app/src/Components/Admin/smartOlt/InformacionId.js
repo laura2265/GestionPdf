@@ -11,7 +11,7 @@ async function fetchAsImageUrl(url) {
     let msg = "Error consultando gráfica";
     try {
       const j = await r.json();
-      msg = j?.message || msg;
+      msg = j?.message || msg; 
     } catch {
       try {
         const t = await r.text();
@@ -269,11 +269,9 @@ function InformacionIdExternal() {
                   <div className="onu-row"><span>WAN setup mode</span><b>{details?.wan_mode ?? "-"}</b></div>
                 </div>
               </div>
-
             </div>
           </div>
         </div>
-
       </div>
 
       <div className="onu-grid-1">
@@ -283,7 +281,7 @@ function InformacionIdExternal() {
             <p className="onu-section-sub">Selecciona el rango para señal y tráfico.</p>
           </div>
 
-          <div className="onu-toolbar-right">
+          <div className="onu-toolbar-right"> 
             <div className="onu-select-group">
               <label>Señal</label>
               <select value={tipoSignal} onChange={(e) => setTipoSignal(e.target.value)}>
@@ -299,6 +297,7 @@ function InformacionIdExternal() {
             </div>
           </div>
         </div>
+
         <div className="onu-Content">
             <div className="onu-card">
           <div className="onu-card-head">
