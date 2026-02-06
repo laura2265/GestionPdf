@@ -17,11 +17,9 @@ function SmartOlt() {
         setOpenReportes(false);
       }
     };
-
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
 
   const menu = () => navigate("/admin");
   const cerrarSesion = () => {
@@ -177,62 +175,6 @@ function SmartOlt() {
     return run;
   };
 
-  const downloadNextBatch = async (upz) => {
-    try {
-      setError("");
-
-      let run = upzRuns[upz];
-      if (!run) {
-        run = await createUpzRun(upz);
-      }
-
-      const totalBatches = ceilDiv(run.total, run.size);
-      if (run.nextBatch >= totalBatches) {
-        setError(`Ya descargaste todos los lotes de ${upz.toUpperCase()} ✅`);
-        return;
-      }
-
-      const url = new URL(`${API_BASE}/report/pdf-upz/${upz}`);
-      url.searchParams.set("runId", run.runId);
-      url.searchParams.set("batch", String(run.nextBatch));
-      url.searchParams.set("size", String(run.size));
- 
-      window.open(url.toString(), "_blank", "noopener,noreferrer");
-
-      setUpzRuns((prev) => ({
-        ...prev,
-        [upz]: { ...prev[upz], nextBatch: prev[upz].nextBatch + 1 },
-      }));
-
-    } catch (e) {
-      const msg = e?.message || "Error descargando lote";
-
-      if (String(msg).toLowerCase().includes("runid")) {
-        setUpzRuns((prev) => ({ ...prev, [upz]: null }));
-        try {
-          const newRun = await createUpzRun(upz);
-
-          const url = new URL(`${API_BASE}/report/pdf-upz/${upz}`);
-          url.searchParams.set("runId", newRun.runId);
-          url.searchParams.set("batch", "0");
-          url.searchParams.set("size", String(newRun.size));
-
-          window.open(url.toString(), "_blank", "noopener,noreferrer");
-
-          setUpzRuns((prev) => ({
-            ...prev,
-            [upz]: { ...prev[upz], nextBatch: 1 },
-          }));
-          return;
-        } catch (e2) {
-          setError(e2?.message || msg);
-          return;
-        }
-      }
-
-      setError(msg);
-    }
-  };
 
 
   const generarReporteONU = (id) => {
@@ -259,7 +201,7 @@ function SmartOlt() {
                 Reporte por UPZ
               </button>
 
-              <button onClick={() => navigate("/reportes/meta")}>
+              <button onClick={() => navigate("/reporte-Upz-Meta")}>
                 Reporte por Meta
               </button>
             </div>
