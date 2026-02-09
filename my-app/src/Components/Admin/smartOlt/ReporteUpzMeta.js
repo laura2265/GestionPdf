@@ -5,7 +5,7 @@ export default function ReportesUpzMeta() {
   const navigate = useNavigate();
   const menu = () => navigate("/smartolt-admin");
 
-  const API_BASE = "http://localhost:3000/api/smart_olt";
+  const API_BASE = "http://localhost:3000/api/smart-olt";
   const BATCH_SIZE = 100;
 
   const [upz, setUpz] = useState("lucero"); 
@@ -86,8 +86,6 @@ export default function ReportesUpzMeta() {
     const url = new URL(`${API_BASE}/report/pdf-upz-meta/${upzKey}/run`);
     url.searchParams.set("mintic", onlyMintic ? "true" : "false");
     url.searchParams.set("meta", meta);
-    if (fromDate) url.searchParams.set("from", fromDate);
-    if (toDate) url.searchParams.set("to", toDate);
     url.searchParams.set("refresh", refresh ? "true" : "false");
 
     const res = await fetch(url.toString(), { method: "GET", cache: "no-store" });
@@ -103,8 +101,6 @@ export default function ReportesUpzMeta() {
       createdAt: Date.now(),
       onlyMintic,
       meta,
-      from: fromDate || null,
-      to: toDate || null,
     };
 
     setRuns((prev) => ({ ...prev, [upzKey]: newRun }));
@@ -170,10 +166,28 @@ export default function ReportesUpzMeta() {
     await downloadNextBatch(upz);
   };
 
-  const resetRun = (upzKey) => {
+  const resetRun = async (upzKey) => {
+  try {
     setError("");
+    setLoading(true);
+
+    const url = new URL(`${API_BASE}/report/pdf-upz-meta/${upzKey}/reset`);
+    url.searchParams.set("mintic", onlyMintic ? "true" : "false");
+    url.searchParams.set("meta", meta);
+
+    const res = await fetch(url.toString(), { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) throw new Error(data?.message || "No se pudo resetear en backend");
+
     setRuns((prev) => ({ ...prev, [upzKey]: null }));
-  };
+  } catch (e) {
+    setError(e?.message || "Error en reset");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="smartolt-container">
@@ -227,7 +241,7 @@ export default function ReportesUpzMeta() {
                   <span>Tesoro</span>
                 </label>
             </div>
-            
+
           </div>
           <div className="ContentLabelMeta">
             <div className="contentOptionMeta">
@@ -238,27 +252,15 @@ export default function ReportesUpzMeta() {
                 <option value="m3">M3</option>
               </select>
             </div>
-
-            <div className="contentOptionMeta">
-              <label>Desde</label>
-              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            </div>
-
-            <div className="contentOptionMeta">
-              <label>Hasta</label>
-              <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-            </div>
           </div>
 
           <div className="loteUpz">
-
             <div className="lotebloqueado">
               <label>Tamaño lote:</label>
               <input value={BATCH_SIZE} disabled />
               <small>Bloqueado a 100</small>
             </div>
           </div>
-
 
           <div className="botonesGenerarReportUPZ">
             <button className="btnGnerarUpz" onClick={handleGenerarListado} disabled={loading}>
@@ -272,7 +274,8 @@ export default function ReportesUpzMeta() {
             <button className="btnGnerarUpz" onClick={() => resetRun(upz)} disabled={loading}>
               Reset {upz}
             </button>
-          </div>
+
+          </div>  
 
           {error && <p className="meta-error">{error}</p>}
 

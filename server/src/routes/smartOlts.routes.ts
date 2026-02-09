@@ -1076,15 +1076,20 @@ const textAll = (o: any) =>
 
 
 const isMintic = (o: any) => textAll(o).includes("mintic");
-
 const upzOf = (o: any) => {
   const t = textAll(o);
-  const grp1 = /lf3\s*-?\s*grp\s*-?\s*1/.test(t) || t.includes("lf3grp1");
-  const grp2 = /lf3\s*-?\s*grp\s*-?\s*2/.test(t) || t.includes("lf3grp2");
-  if (grp1) return "lucero";
-  if (grp2) return "tesoro";
+
+  // prioridad: P1 / P2
+  if (/\bp1\b/.test(t)) return "lucero";
+  if (/\bp2\b/.test(t)) return "tesoro";
+
+  // fallback legacy: LF3GRP1 / LF3GRP2
+  if (t.includes("lf3grp1") || /lf3\s*-?\s*grp\s*-?\s*1/.test(t)) return "lucero";
+  if (t.includes("lf3grp2") || /lf3\s*-?\s*grp\s*-?\s*2/.test(t)) return "tesoro";
+
   return "otros";
 };
+
 
 smartOltRouter.get("/report/pdf-upz/:upz/run", async (req, res, next) => {
   try {
@@ -1399,20 +1404,27 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
 // =====================================================
 
 type UpzKey = "lucero" | "tesoro";
-type MetaKey = "all" | "m1" | "m2" | "m3";
+type MetaKey =  "m1" | "m2" | "m3";
 
 type UpzMetaRun = {
   upz: UpzKey;
   meta: MetaKey;
   onlyMintic: boolean;
-  from?: string;
-  to?: string;
-  ids: string[];       // lista congelada y ordenada
+  authorizationFrom?: Date;
+  authorizationTo?: Date;
+  ids: string[]; 
   createdAt: number;
   total: number;
 };
 
 const upzMetaRuns = new Map<string, UpzMetaRun>();
+
+const exportedByKey = new Map<string, Set<string>>();
+
+const keyOf = (upz: string, meta: string, onlyMintic: boolean) =>
+  `${upz}|${meta}|${onlyMintic ? "mintic" : "all"}`;
+
+
 
 const cleanupUpzMetaRuns = () => {
   const now = Date.now();
@@ -1422,13 +1434,14 @@ const cleanupUpzMetaRuns = () => {
 };
 
 
-const metaOf = (o: any): Exclude<MetaKey, "all"> | "none" => {
+const metaOf = (o: any): MetaKey | "none" => {
   const t = textAll(o);
-  if (/\bm1\b/.test(t)) return "m1";
-  if (/\bm2\b/.test(t)) return "m2";
-  if (/\bm3\b/.test(t)) return "m3";
+  if (/\bm\s*[-_]?\s*1\b/.test(t)) return "m1";
+  if (/\bm\s*[-_]?\s*2\b/.test(t)) return "m2";
+  if (/\bm\s*[-_]?\s*3\b/.test(t)) return "m3";
   return "none";
 };
+
 
 // detecta fecha desde texto: 2026-02-06 o 06/02/2026 o 06-02-2026
 const dateFromText = (t: string): Date | null => {
@@ -1464,9 +1477,6 @@ const parseYmd = (s: string, endOfDay = false): Date | null => {
   return isNaN(d.getTime()) ? null : d;
 };
 
-// =====================================================
-// 1) RUN: congela IDs por (UPZ + META + FECHAS + MINTIC)
-// =====================================================
 smartOltRouter.get("/report/pdf-upz-meta/:upz/run", async (req, res, next) => {
   try {
     cleanupUpzMetaRuns();
@@ -1482,17 +1492,16 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz/run", async (req, res, next) => {
     const onlyMintic = String(req.query.mintic ?? "true").toLowerCase() === "true";
 
     const meta = String(req.query.meta ?? "all").trim().toLowerCase();
-    if (!["all", "m1", "m2", "m3"].includes(meta)) {
-      return res.status(400).json({ message: "Meta inválida. Use: all | m1 | m2 | m3" });
+    if (!["all","m1", "m2", "m3"].includes(meta)) {
+      return res.status(400).json({ message: "Meta inválida. Use: m1 | m2 | m3" });
     }
 
-    const from = String(req.query.from ?? "").trim(); // YYYY-MM-DD
-    const to = String(req.query.to ?? "").trim();     // YYYY-MM-DD
-    const fromD = parseYmd(from, false);
-    const toD = parseYmd(to, true);
+    const from = (req.query.from as string) || "";
+    const to = (req.query.to as string) || "";
 
-    if (from && !fromD) return res.status(400).json({ message: "from inválido (use YYYY-MM-DD)" });
-    if (to && !toD) return res.status(400).json({ message: "to inválido (use YYYY-MM-DD)" });
+    const fromD = from ? new Date(from + "T00:00:00") : null;
+    const toD = to ? new Date(to + "T23:59:59") : null;
+
 
     const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
     if (!r.ok) return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
@@ -1513,16 +1522,46 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz/run", async (req, res, next) => {
         return true;
       });
 
+
     if (!filtered.length) {
       return res.status(404).json({
         message: `No hay ONUs para UPZ ${upz} meta=${meta}${onlyMintic ? " mintic=true" : ""}`,
       });
     }
+    const key = keyOf(upz, meta, onlyMintic);
+    const exported = exportedByKey.get(key) ?? new Set<string>();
+    exportedByKey.set(key, exported);
 
-    const ids = filtered
+    let ids = filtered
       .map((o: any) => String(o?.unique_external_id ?? o?.sn ?? "").trim())
-      .filter(Boolean)
-      .sort((a: string, b: string) => a.localeCompare(b));
+      .filter(Boolean);
+
+    // dedupe
+    ids = Array.from(new Set(ids));
+
+    // excluir exportados
+    ids = ids.filter(id => !exported.has(id));
+
+    if (!ids.length) {
+      return res.status(404).json({
+        message: `No hay ONUs nuevas (sin repetir) para UPZ ${upz} meta=${meta}${onlyMintic ? " mintic=true" : ""}. Probablemente ya descargaste todo.`,
+      });
+    }
+
+
+    
+    const dates = filtered
+      .map(o => dateOf(o))
+      .filter((d): d is Date => d !== null);
+
+    const authFrom = dates.length
+      ? new Date(Math.min(...dates.map(d => d.getTime())))
+      : null;
+
+    const authTo = dates.length
+      ? new Date(Math.max(...dates.map(d => d.getTime())))
+      : null;
+
 
     const runId = `upzmeta-${upz}-${meta}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -1530,8 +1569,8 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz/run", async (req, res, next) => {
       upz: upz as UpzKey,
       meta: meta as MetaKey,
       onlyMintic,
-      from: from || undefined,
-      to: to || undefined,
+      authorizationFrom: authFrom || undefined,
+      authorizationTo: authTo || undefined,
       ids,
       createdAt: Date.now(),
       total: ids.length,
@@ -1542,10 +1581,12 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz/run", async (req, res, next) => {
       upz,
       meta,
       onlyMintic,
-      from: from || null,
-      to: to || null,
       total: ids.length,
       expiresInMinutes: Math.round(RUN_TTL_MS / 60000),
+      authorizationFrom: authFrom,
+      authorizationTo: authTo,
+
+      createdAt: new Date(),
       exampleDownload: `/api/smart_olt/report/pdf-upz-meta/${upz}?runId=${runId}&batch=0&size=100`,
     });
   } catch (e) {
@@ -1553,9 +1594,7 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz/run", async (req, res, next) => {
   }
 });
 
-// =====================================================
-// 2) PDF: usa runId + batch + size=100 (sin repetición)
-// =====================================================
+
 smartOltRouter.get("/report/pdf-upz-meta/:upz", async (req, res, next) => {
   try {
     if (!tokenSmart) return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
@@ -1577,11 +1616,18 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz", async (req, res, next) => {
 
     const batch = Math.max(0, Number(req.query.batch ?? 0) || 0);
     const size = Math.min(100, Math.max(3, Number(req.query.size ?? 100) || 100));
-
+    
+ 
     const total = run.ids.length;
     const start = batch * size;
-    const end = Math.min(start + size, total);
+    const end = start + size;
     const idsBatch = run.ids.slice(start, end);
+
+    const key = keyOf(run.upz, run.meta, run.onlyMintic);
+    const exported = exportedByKey.get(key) ?? new Set<string>();
+    exportedByKey.set(key, exported);
+      
+    for (const id of idsBatch) exported.add(id);
 
     if (!idsBatch.length) {
       return res.status(404).json({ message: "Lote vacío (probablemente ya descargaste todo)" });
@@ -1604,9 +1650,6 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz", async (req, res, next) => {
     // 3) lote final con datos
     const list = idsBatch.map((id) => byId.get(id)).filter(Boolean);
 
-    // ===========================================
-    // 4) gráficas (igual a tu reporte UPZ)
-    // ===========================================
     const CONCURRENCY = 2;
 
     const signalUrl = (id: string) =>
@@ -1638,10 +1681,6 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz", async (req, res, next) => {
       graphMap.set(job.id, prev);
       return true;
     });
-
-    // ===========================================
-    // 5) render html (igual, solo título cambia)
-    // ===========================================
     const chunk = <T,>(arr: T[], n: number) => {
       const out: T[][] = [];
       for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
@@ -1690,6 +1729,7 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz", async (req, res, next) => {
                 <span class="muted">CATV:</span> <b>${esc(o?.catv ?? "-")}</b>
               </div>
               <div class="comment"><span class="muted">Comentario:</span> ${esc(o?.address ?? o?.comment ?? "-")}</div>
+              <div class="comment"><span class="muted">Fecha autorización:</span> ${esc(o?.authorization_date ?? "-")}</div>
             </div>
             <div class="right">
               <div class="muted">External ID</div>
@@ -1705,14 +1745,22 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz", async (req, res, next) => {
       `;
     };
 
-    const metaLabel = run.meta === "all" ? "Todas" : run.meta.toUpperCase();
+    const metaLabel = run.meta.toUpperCase(); // M1/M2/M3
     const dateLabel =
-      run.from || run.to ? ` | Fechas: ${run.from ?? "—"} a ${run.to ?? "—"}` : "";
+      run.authorizationFrom || run.authorizationTo ? ` | Fechas: ${run.authorizationFrom ?? "—"} a ${run.authorizationTo ?? "—"}` : "";
+    const formatDate = (d?: Date | null) =>
+      d ? d.toISOString().slice(0, 10) : "N/A";
 
     const renderPage = (items: any[]) => `
       <section class="page">
         <div class="pageHead">
           <h1>Reporte UPZ ${esc(run.upz)} | Meta: ${esc(metaLabel)}${esc(dateLabel)} | Lote: ${esc(batch)}</h1>
+          <p>
+            <strong>Rango de autorización:</strong>
+            ${formatDate(run.authorizationFrom)}
+            &nbsp;→&nbsp;
+            ${formatDate(run.authorizationTo)}
+          </p>
           <div class="meta">
             Generado: ${esc(now.toLocaleString())} | Total ONUs: ${esc(total)} | Rango: ${esc(start)}-${esc(end - 1)}
           </div>
@@ -1801,4 +1849,31 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz", async (req, res, next) => {
     next(e);
   }
 });
+smartOltRouter.post("/report/pdf-upz-meta/:upz/reset", (req, res) => {
+  try {
+    const upz = String(req.params.upz || "").trim().toLowerCase();
+    if (!["lucero", "tesoro"].includes(upz)) {
+      return res.status(400).json({ message: "UPZ inválida. Use: lucero | tesoro" });
+    }
 
+    const onlyMintic = String(req.query.mintic ?? "true").toLowerCase() === "true";
+
+    const meta = String(req.query.meta ?? "m1").trim().toLowerCase();
+    if (!["m1", "m2", "m3"].includes(meta)) {
+      return res.status(400).json({ message: "Meta inválida. Use: m1 | m2 | m3" });
+    }
+
+    const key = keyOf(upz, meta, onlyMintic);
+    exportedByKey.delete(key);
+
+    for (const [runId, run] of upzMetaRuns.entries()) {
+      if (run.upz === upz && run.meta === meta && run.onlyMintic === onlyMintic) {
+        upzMetaRuns.delete(runId);
+      }
+    }
+
+    return res.json({ ok: true, message: "Reset aplicado", upz, meta, onlyMintic });
+  } catch (e: any) {
+    return res.status(500).json({ message: e?.message || "Error reseteando" });
+  }
+});
