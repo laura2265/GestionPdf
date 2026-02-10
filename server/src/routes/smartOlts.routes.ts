@@ -1,7 +1,6 @@
 import { Router } from "express";
 import puppeteer from "puppeteer";
 export const smartOltRouter = Router();
-import { PDFDocument } from "pdf-lib";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -136,7 +135,6 @@ async function fetchWithCache(
 ) {
   const cached = getCached(key);
 
-  // 1) Si no piden refresh y hay cache → responde cache
   if (!opts.refresh && cached) {
     return { ok: true, fromCache: true, cachedAt: cached.at, data: cached.data };
   }
@@ -1031,16 +1029,24 @@ smartOltRouter.get("/report/onu/:id", async (req, res, next) => {
   }
 });
 
+// =========================
+// UPZ SOLO (RUN + PDF + RESET)
+// =========================
+
+type UpzKey1 = "lucero" | "tesoro";
 
 type UpzRun = {
-  upz: "lucero" | "tesoro";
+  upz: UpzKey1;
+  onlyMintic: boolean;
   ids: string[];
   createdAt: number;
   total: number;
 };
 
 const upzRuns = new Map<string, UpzRun>();
-const RUN_TTL_MS = 1000 * 60 * 60 * 2; 
+const exportedUpzByKey = new Map<string, Set<string>>();
+
+const RUN_TTL_MS = 1000 * 60 * 60 * 2;
 
 const cleanupRuns = () => {
   const now = Date.now();
@@ -1052,14 +1058,13 @@ const cleanupRuns = () => {
 const commentText = (o: any) =>
   String(
     o?.address ??
-    o?.comment ??
-    o?.contact ??
-    o?.description ??
-    o?.notes ??
-    o?.odb_name ??
-    ""
+      o?.comment ??
+      o?.contact ??
+      o?.description ??
+      o?.notes ??
+      o?.odb_name ??
+      ""
   ).trim();
-
 
 const textAll = (o: any) =>
   [
@@ -1074,9 +1079,9 @@ const textAll = (o: any) =>
     .join(" ")
     .toLowerCase();
 
-
 const isMintic = (o: any) => textAll(o).includes("mintic");
-const upzOf = (o: any) => {
+
+const upzOf = (o: any): UpzKey | "otros" => {
   const t = textAll(o);
 
   // prioridad: P1 / P2
@@ -1090,6 +1095,21 @@ const upzOf = (o: any) => {
   return "otros";
 };
 
+const onuKey = (o: any) => String(o?.unique_external_id ?? o?.sn ?? "").trim();
+
+const dateOfUpz = (o: any): Date | null => {
+  const s = String(o?.authorization_date ?? "").trim();
+  if (!s) return null;
+
+  const isoish = s.includes("T") ? s : s.replace(" ", "T");
+  const t = Date.parse(isoish);
+  if (!Number.isFinite(t)) return null;
+
+  return new Date(t);
+};
+
+const upzKeyOf = (upz: string, onlyMintic: boolean) =>
+  `${upz}|${onlyMintic ? "mintic" : "all"}`;
 
 smartOltRouter.get("/report/pdf-upz/:upz/run", async (req, res, next) => {
   try {
@@ -1108,25 +1128,50 @@ smartOltRouter.get("/report/pdf-upz/:upz/run", async (req, res, next) => {
     const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
     if (!r.ok) return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
 
-    const onus = Array.isArray(r.data?.onus) ? r.data.onus : [];
+    const raw = Array.isArray(r.data?.onus) ? r.data.onus : [];
+    const onus = raw.map((x: any) => x?.onu_details ?? x);
 
-    const listAll = onus
+    let filtered = onus
       .filter((o: any) => (onlyMintic ? isMintic(o) : true))
       .filter((o: any) => upzOf(o) === upz);
 
-    if (!listAll.length) {
-      return res.status(404).json({ message: `No hay ONUs para UPZ ${upz}${onlyMintic ? " (mintic=true)" : ""}` });
+    if (!filtered.length) {
+      return res.status(404).json({
+        message: `No hay ONUs para UPZ ${upz}${onlyMintic ? " (mintic=true)" : ""}`,
+      });
     }
 
-    const ids = listAll
-      .map((o: any) => String(o?.unique_external_id ?? o?.sn ?? "").trim())
-      .filter(Boolean)
-      .sort((a: string, b: string) => a.localeCompare(b));
+    filtered.sort((a: any, b: any) => {
+      const da = dateOfUpz(a)?.getTime();
+      const db = dateOfUpz(b)?.getTime();
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return da - db;
+    });
 
-    const runId = `${upz}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const key = upzKeyOf(upz, onlyMintic);
+    const exported = exportedUpzByKey.get(key) ?? new Set<string>();
+    exportedUpzByKey.set(key, exported);
+
+    let ids = filtered.map(onuKey).filter(Boolean);
+
+    const seen = new Set<string>();
+    ids = ids.filter((id) => (seen.has(id) ? false : (seen.add(id), true)));
+
+    ids = ids.filter((id) => !exported.has(id));
+
+    if (!ids.length) {
+      return res.status(404).json({
+        message: `No hay ONUs nuevas (sin repetir) para UPZ ${upz}${onlyMintic ? " (mintic=true)" : ""}. Probablemente ya descargaste todo.`,
+      });
+    }
+
+    const runId = `upz-${upz}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
     upzRuns.set(runId, {
-      upz: upz as any,
+      upz: upz as UpzKey,
+      onlyMintic,
       ids,
       createdAt: Date.now(),
       total: ids.length,
@@ -1138,27 +1183,48 @@ smartOltRouter.get("/report/pdf-upz/:upz/run", async (req, res, next) => {
       onlyMintic,
       total: ids.length,
       expiresInMinutes: Math.round(RUN_TTL_MS / 60000),
-      exampleDownload: `/api/smart_olt/report/pdf-upz/${upz}?runId=${runId}&batch=0&size=30`,
+      exampleDownload: `/api/smart_olt/report/pdf-upz/${upz}?runId=${runId}&batch=0&size=100`,
     });
   } catch (e) {
     next(e);
   }
 });
 
-
 smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
   try {
     if (!tokenSmart) return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
 
+    cleanupRuns();
+
     const refresh = req.query.refresh === "true";
     const upz = String(req.params.upz || "").trim().toLowerCase();
-
     if (!["lucero", "tesoro"].includes(upz)) {
       return res.status(400).json({ message: "UPZ inválida. Use: lucero | tesoro" });
     }
 
+    const runId = String(req.query.runId ?? "").trim();
+    if (!runId) return res.status(400).json({ message: "Falta runId (cree el run primero)" });
+
+    const run = upzRuns.get(runId);
+    if (!run) return res.status(400).json({ message: "runId inválido o expirado" });
+    if (run.upz !== upz) return res.status(400).json({ message: "runId no corresponde a esa UPZ" });
+
     const batch = Math.max(0, Number(req.query.batch ?? 0) || 0);
     const size = Math.min(100, Math.max(3, Number(req.query.size ?? 100) || 100));
+
+    const total = run.ids.length;
+    const start = batch * size;
+    const end = start + size;
+    const idsBatch = run.ids.slice(start, end);
+
+    if (!idsBatch.length) {
+      return res.status(404).json({ message: "Lote vacío (probablemente ya descargaste todo)" });
+    }
+
+    const key = upzKeyOf(run.upz, run.onlyMintic);
+    const exported = exportedUpzByKey.get(key) ?? new Set<string>();
+    exportedUpzByKey.set(key, exported);
+    for (const id of idsBatch) exported.add(id);
 
     const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
     if (!r.ok) return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
@@ -1166,34 +1232,13 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
     const raw = Array.isArray(r.data?.onus) ? r.data.onus : [];
     const onus = raw.map((x: any) => x?.onu_details ?? x);
 
-    const textAll = (o: any) =>
-      `${o?.address ?? ""} ${o?.comment ?? ""} ${o?.name ?? ""} ${o?.zone_name ?? ""}`.toLowerCase();
-
-    const isMintic = (o: any) => textAll(o).includes("mintic");
-
-    const upzOf = (o: any) => {
-      const t = textAll(o);
-      const grp1 = /lf3\s*-?\s*grp\s*-?\s*1/.test(t) || t.includes("lf3grp1");
-      const grp2 = /lf3\s*-?\s*grp\s*-?\s*2/.test(t) || t.includes("lf3grp2");
-      if (grp1) return "lucero";
-      if (grp2) return "tesoro";
-      return "otros";
-    };
-
-    const listAll = onus.filter(isMintic).filter((o: any) => upzOf(o) === upz);
-
-    if (!listAll.length) {
-      return res.status(404).json({
-        message: `No hay ONUs para UPZ ${upz}`,
-        hint: "Revisa que el comentario/address tenga MINTIC y LF3GRP1/LF3GRP2",
-      });
+    const byId = new Map<string, any>();
+    for (const o of onus) {
+      const id = onuKey(o);
+      if (id) byId.set(id, o);
     }
 
-    const total = listAll.length;
-
-    const start = batch * size;
-    const end = Math.min(start + size, total);
-    const list = listAll.slice(start, end);
+    const list = idsBatch.map((id) => byId.get(id)).filter(Boolean);
 
     const CONCURRENCY = 2;
 
@@ -1206,7 +1251,7 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
     const jobs: Job[] = [];
 
     for (const o of list) {
-      const id = String(o?.unique_external_id ?? o?.sn ?? "").trim();
+      const id = onuKey(o);
       if (!id) continue;
       jobs.push({ kind: "signal", id });
       jobs.push({ kind: "trafico", id });
@@ -1216,10 +1261,10 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
 
     await mapLimit(jobs, CONCURRENCY, async (job) => {
       await sleep(120);
-      const key = `${job.kind}:${job.id}:monthly`;
+      const cacheKey = `${job.kind}:${job.id}:monthly`;
       const url = job.kind === "signal" ? signalUrl(job.id) : trafUrl(job.id);
 
-      const img = await fetchGraphAsDataUrl(url, key);
+      const img = await fetchGraphAsDataUrl(url, cacheKey);
 
       const prev = graphMap.get(job.id) || {};
       if (job.kind === "signal") prev.signal = img;
@@ -1263,7 +1308,7 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
     };
 
     const renderCard = (o: any) => {
-      const onuId = String(o?.unique_external_id ?? o?.sn ?? "").trim();
+      const onuId = onuKey(o);
       const gm = graphMap.get(onuId) || {};
       return `
         <div class="card">
@@ -1276,6 +1321,7 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
                 <span class="muted">CATV:</span> <b>${esc(o?.catv ?? "-")}</b>
               </div>
               <div class="comment"><span class="muted">Comentario:</span> ${esc(o?.address ?? o?.comment ?? "-")}</div>
+              <div class="comment"><span class="muted">Fecha autorización:</span> ${esc(o?.authorization_date ?? "-")}</div>
             </div>
             <div class="right">
               <div class="muted">External ID</div>
@@ -1291,13 +1337,14 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
       `;
     };
 
-    const renderPage = (items: any[], idx: number) => `
+    const renderPage = (items: any[]) => `
       <section class="page">
         <div class="pageHead">
-          <h1>Reporte UPZ ${esc(upz)} (${batch})</h1>
+          <h1>Reporte UPZ ${esc(upz)} | Lote: ${esc(batch)}</h1>
           <div class="meta">
             Generado: ${esc(now.toLocaleString())} |
-            ONUs UPZ: ${total}
+            ONUs en RUN: ${esc(total)} |
+            Rango: ${esc(start)}-${esc(Math.min(end - 1, total - 1))}
           </div>
         </div>
 
@@ -1308,58 +1355,58 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
     `;
 
     const html = `
-        <!doctype html>
-        <html>
-          <head>
-            <meta charset="utf-8"/>
-            <title>Reporte UPZ ${esc(upz)}</title>
-            <style>
-              *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
-              body{ margin:0; color:#111; }
-              .page{ padding:10mm; page-break-after: always; }
-              .page:last-child{ page-break-after: auto; }
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8"/>
+          <title>Reporte UPZ ${esc(upz)}</title>
+          <style>
+            *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+            body{ margin:0; color:#111; }
+            .page{ padding:10mm; page-break-after: always; }
+            .page:last-child{ page-break-after: auto; }
 
-              .pageHead{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; }
-              h1{ margin:0; font-size:16px; }
-              .meta{ font-size:10px; color:#555; }
+            .pageHead{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; }
+            h1{ margin:0; font-size:16px; }
+            .meta{ font-size:10px; color:#555; }
 
-              .cards{ display:flex; flex-direction:column; gap:8px; }
+            .cards{ display:flex; flex-direction:column; gap:8px; }
 
-              .card{ border:1px solid #e5e7eb; border-radius:12px; padding:8px; page-break-inside: avoid; break-inside: avoid; }
+            .card{ border:1px solid #e5e7eb; border-radius:12px; padding:8px; page-break-inside: avoid; break-inside: avoid; }
 
-              .head{ display:flex; justify-content:space-between; gap:10px; }
-              .name{ font-size:12px; font-weight:800; }
-              .sub{ margin-top:2px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
-              .comment{ margin-top:4px; font-size:10px; color:#111; }
-              .muted{ color:#666; font-size:10px; }
+            .head{ display:flex; justify-content:space-between; gap:10px; }
+            .name{ font-size:12px; font-weight:800; }
+            .sub{ margin-top:2px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+            .comment{ margin-top:4px; font-size:10px; color:#111; }
+            .muted{ color:#666; font-size:10px; }
 
-              .right{ min-width:180px; text-align:right; }
-              .idv{ font-weight:800; font-size:10px; word-break:break-all; }
+            .right{ min-width:180px; text-align:right; }
+            .idv{ font-weight:800; font-size:10px; word-break:break-all; }
 
-              .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:9px; border:1px solid #ddd; }
-              .pill.online{ border-color:#2ecc71; color:#2ecc71; }
-              .pill.los{ border-color:#e74c3c; color:#e74c3c; }
-              .pill.pf{ border-color:#f1c40f; color:#f1c40f; }
-              .pill.unk{ border-color:#7f8c8d; color:#7f8c8d; }
+            .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:9px; border:1px solid #ddd; }
+            .pill.online{ border-color:#2ecc71; color:#2ecc71; }
+            .pill.los{ border-color:#e74c3c; color:#e74c3c; }
+            .pill.pf{ border-color:#f1c40f; color:#f1c40f; }
+            .pill.unk{ border-color:#7f8c8d; color:#7f8c8d; }
 
-              .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
-              .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
-              .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
+            .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+            .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
+            .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
 
-              img{ width:100%; height:auto; display:block; max-height:220px; object-fit:contain; }
+            img{ width:100%; height:auto; display:block; max-height:220px; object-fit:contain; }
 
-              .gempty{
-                min-height: 170px;
-                display:flex; align-items:center; justify-content:center;
-                text-align:center; font-size:9px; color:#666;
-                border:1px dashed #ddd; border-radius:8px; padding:8px; background:#fafafa;
-              }
-            </style>
-          </head>
-          <body>
-            ${pages.map(renderPage).join("")}
-          </body>
-        </html>
+            .gempty{
+              min-height: 170px;
+              display:flex; align-items:center; justify-content:center;
+              text-align:center; font-size:9px; color:#666;
+              border:1px dashed #ddd; border-radius:8px; padding:8px; background:#fafafa;
+            }
+          </style>
+        </head>
+        <body>
+          ${pages.map(renderPage).join("")}
+        </body>
+      </html>
     `;
 
     const browser = await puppeteer.launch({
@@ -1384,7 +1431,7 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="reporte-upz-${upz}-${batch}.pdf"`
+        `attachment; filename="reporte-upz-${upz}-batch-${batch}.pdf"`
       );
       return res.status(200).send(pdf);
     } finally {
@@ -1394,6 +1441,26 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
     next(e);
   }
 });
+
+smartOltRouter.post("/report/pdf-upz/:upz/reset", (req, res) => {
+  try {
+    const upz = String(req.params.upz || "").trim().toLowerCase();
+    if (!["lucero", "tesoro"].includes(upz)) {
+      return res.status(400).json({ message: "UPZ inválida. Use: lucero | tesoro" });
+    }
+    const onlyMintic = String(req.query.mintic ?? "true").toLowerCase() === "true";
+    const key = upzKeyOf(upz, onlyMintic);
+    exportedUpzByKey.delete(key);
+
+    for (const [id, run] of upzRuns.entries()) {
+      if (run.upz === upz && run.onlyMintic === onlyMintic) upzRuns.delete(id);
+    }
+    return res.json({ ok: true, message: "Reset UPZ aplicado", upz, onlyMintic });
+  } catch (e: any) {
+    return res.status(500).json({ message: e?.message || "Error reseteando UPZ" });
+  }
+});
+
 
 
 // =====================================================
@@ -1442,40 +1509,17 @@ const metaOf = (o: any): MetaKey | "none" => {
   return "none";
 };
 
-
-// detecta fecha desde texto: 2026-02-06 o 06/02/2026 o 06-02-2026
-const dateFromText = (t: string): Date | null => {
-  const iso = t.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
-  if (iso) {
-    const d = new Date(`${iso[1]}-${iso[2]}-${iso[3]}T00:00:00`);
-    return isNaN(d.getTime()) ? null : d;
-  }
-  const lat = t.match(/\b(\d{2})[\/-](\d{2})[\/-](20\d{2})\b/);
-  if (lat) {
-    const d = new Date(`${lat[3]}-${lat[2]}-${lat[1]}T00:00:00`);
-    return isNaN(d.getTime()) ? null : d;
-  }
-  return null;
-};
-
 const dateOf = (o: any): Date | null => {
   const s = String(o?.authorization_date ?? "").trim();
   if (!s) return null;
 
-  const isoish = s.includes("T") ? s : s.replace(" ", "T"); // 2022-05-11T17:55:53
+  const isoish = s.includes("T") ? s : s.replace(" ", "T");
   const t = Date.parse(isoish);
   if (!Number.isFinite(t)) return null;
 
   return new Date(t);
 };
 
-
-
-const parseYmd = (s: string, endOfDay = false): Date | null => {
-  if (!s) return null;
-  const d = new Date(`${s}T${endOfDay ? "23:59:59" : "00:00:00"}`);
-  return isNaN(d.getTime()) ? null : d;
-};
 
 smartOltRouter.get("/report/pdf-upz-meta/:upz/run", async (req, res, next) => {
   try {
@@ -1520,6 +1564,16 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz/run", async (req, res, next) => {
         if (fromD && d < fromD) return false;
         if (toD && d > toD) return false;
         return true;
+      });
+
+      // Ordena por authorization_date ASC (y si no tiene fecha, al final)
+      filtered.sort((a: any, b: any) => {
+        const da = dateOf(a)?.getTime();
+        const db = dateOf(b)?.getTime();
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
+        return da - db;
       });
 
 
@@ -1748,19 +1802,23 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz", async (req, res, next) => {
     const metaLabel = run.meta.toUpperCase(); // M1/M2/M3
     const dateLabel =
       run.authorizationFrom || run.authorizationTo ? ` | Fechas: ${run.authorizationFrom ?? "—"} a ${run.authorizationTo ?? "—"}` : "";
-    const formatDate = (d?: Date | null) =>
-      d ? d.toISOString().slice(0, 10) : "N/A";
+    const formatDateLocal = (d?: Date | null) => {
+      if (!d) return "N/A";
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    };
+
 
     const renderPage = (items: any[]) => `
       <section class="page">
         <div class="pageHead">
-          <h1>Reporte UPZ ${esc(run.upz)} | Meta: ${esc(metaLabel)}${esc(dateLabel)} | Lote: ${esc(batch)}</h1>
-          <p>
-            <strong>Rango de autorización:</strong>
-            ${formatDate(run.authorizationFrom)}
-            &nbsp;→&nbsp;
-            ${formatDate(run.authorizationTo)}
-          </p>
+          <h1>Reporte UPZ ${esc(run.upz)} | Meta: ${esc(metaLabel)}
+          <br/>
+          Rango de autorización:${formatDateLocal(run.authorizationFrom)} → ${formatDateLocal(run.authorizationTo)}
+
+          </h1>
           <div class="meta">
             Generado: ${esc(now.toLocaleString())} | Total ONUs: ${esc(total)} | Rango: ${esc(start)}-${esc(end - 1)}
           </div>
@@ -1839,7 +1897,7 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz", async (req, res, next) => {
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="reporte-upz-${run.upz}-meta-${run.meta}-batch-${batch}.pdf"`
+        `attachment; filename="reporte-upz-${run.upz}-meta-${run.meta}.pdf"`
       );
       return res.status(200).send(pdf);
     } finally {

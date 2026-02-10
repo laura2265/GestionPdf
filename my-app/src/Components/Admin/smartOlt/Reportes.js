@@ -5,6 +5,8 @@ import "./smartol.css"; // si ya lo usas en SmartOlt, mantenlo aquí también
 function Reportes() {
   const navigate = useNavigate();
   const menu = () => navigate("/smartolt-admin");
+  const [listStatus, setListStatus] = useState("idle");
+
 
   const [upz, setUpz] = useState("lucero");
   const [onlyMintic, setOnlyMintic] = useState(true);
@@ -72,85 +74,121 @@ function Reportes() {
     return newRun;
   };
   const downloadNextBatch = async (upzKey) => {
-    try {
-      setError("");
-      setLoading(true);
+  try {
+    setError("");
+    setLoading(true);
 
-      let currentRun = upzRuns[upzKey];
-      if (!currentRun) {
-        currentRun = await createUpzRun(upzKey);
-      }
+    let currentRun = upzRuns[upzKey];
+    if (!currentRun) {
+      currentRun = await createUpzRun(upzKey);
+    }
 
-      const totalBatches = ceilDiv(currentRun.total, currentRun.size);
+    // ✅ AQUÍ el fix
+    const totalBatches = Math.ceil(currentRun.total / currentRun.size);
 
-      if (currentRun.nextBatch >= totalBatches) {
-        setError(`Ya descargaste todos los lotes de ${upzKey.toUpperCase()} ✅`);
+    if (currentRun.nextBatch >= totalBatches) {
+      setError(`Ya descargaste todos los lotes de ${upzKey.toUpperCase()} ✅`);
+      return;
+    }
+
+    const url = new URL(`${API_BASE}/report/pdf-upz/${upzKey}`);
+    url.searchParams.set("runId", currentRun.runId);
+    url.searchParams.set("batch", String(currentRun.nextBatch));
+    url.searchParams.set("size", String(currentRun.size));
+
+    window.open(url.toString(), "_blank", "noopener,noreferrer");
+
+    setUpzRuns((prev) => ({
+      ...prev,
+      [upzKey]: { ...prev[upzKey], nextBatch: prev[upzKey].nextBatch + 1 },
+    }));
+  } catch (e) {
+    const msg = e?.message || "Error descargando lote";
+
+    if (String(msg).toLowerCase().includes("runid")) {
+      setUpzRuns((prev) => ({ ...prev, [upzKey]: null }));
+
+      try {
+        const newRun = await createUpzRun(upzKey);
+
+        const url = new URL(`${API_BASE}/report/pdf-upz/${upzKey}`);
+        url.searchParams.set("runId", newRun.runId);
+        url.searchParams.set("batch", "0");
+        url.searchParams.set("size", String(newRun.size));
+
+        window.open(url.toString(), "_blank", "noopener,noreferrer");
+
+        setUpzRuns((prev) => ({
+          ...prev,
+          [upzKey]: { ...prev[upzKey], nextBatch: 1 },
+        }));
+        return;
+      } catch (e2) {
+        setError(e2?.message || msg);
         return;
       }
-
-      const url = new URL(`${API_BASE}/report/pdf-upz/${upzKey}`);
-      url.searchParams.set("runId", currentRun.runId);
-      url.searchParams.set("batch", String(currentRun.nextBatch));
-      url.searchParams.set("size", String(currentRun.size));
-      window.open(url.toString(), "_blank", "noopener,noreferrer");
-      setUpzRuns((prev) => ({
-        ...prev,
-        [upzKey]: { ...prev[upzKey], nextBatch: prev[upzKey].nextBatch + 1 },
-      }));
-    } catch (e) {
-      const msg = e?.message || "Error descargando lote";
-
-      if (String(msg).toLowerCase().includes("runid")) {
-        setUpzRuns((prev) => ({ ...prev, [upzKey]: null }));
-
-        try {
-          const newRun = await createUpzRun(upzKey);
-
-          const url = new URL(`${API_BASE}/report/pdf-upz/${upzKey}`);
-          url.searchParams.set("runId", newRun.runId);
-          url.searchParams.set("batch", "0");
-          url.searchParams.set("size", String(newRun.size));
-
-          window.open(url.toString(), "_blank", "noopener,noreferrer");
-
-          setUpzRuns((prev) => ({
-            ...prev,
-            [upzKey]: { ...prev[upzKey], nextBatch: 1 },
-          }));
-          return;
-        } catch (e2) {
-          setError(e2?.message || msg);
-          return;
-        }
-      }
-
-      setError(msg);
-    } finally {
-      setLoading(false);
     }
-  };
 
-  const resetUpzRun = (upzKey) => {
-    setError("");
-    setUpzRuns((prev) => ({ ...prev, [upzKey]: null }));
-  };
+    setError(msg);
+  } finally {
+    setLoading(false);
+  }
+};
 
-  const handleGenerarListado = async () => {
+
+    const resetUpzRun = async (upzKey) => {
+      try {
+        setError("");
+        setLoading(true);
+
+        const url = new URL(`${API_BASE}/report/pdf-upz/${upzKey}/reset`);
+        url.searchParams.set("mintic", onlyMintic ? "true" : "false");
+
+        const res = await fetch(url.toString(), { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) throw new Error(data?.message || "No se pudo resetear");
+
+        // limpiar estado local
+        setUpzRuns((prev) => ({ ...prev, [upzKey]: null }));
+        setListStatus("idle");
+      } catch (e) {
+        setError(e?.message || "Error reseteando");
+        setListStatus("error");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+
+    const handleGenerarListado = async () => {
     try {
       setError("");
+      setListStatus("idle");
       setLoading(true);
+
       await createUpzRun(upz);
+
+      setListStatus("ok");
     } catch (e) {
+      setListStatus("error");
       setError(e?.message || "No se pudo generar el listado");
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    setListStatus("idle");
+    setError("");
+  }, [upz, onlyMintic]);
+
+
   const handleDescargarLotes = async () => {
     await downloadNextBatch(upz);
   };
 
+  
   return (
     <div className="smartolt-container">
       <header className="dashboard-header">
@@ -162,7 +200,7 @@ function Reportes() {
 
             <div className="dropdown-reportes-menu">
               <button onClick={() => navigate("/reportes")}>Reporte por UPZ</button>
-              <button onClick={() => navigate("/reportes/meta")}>Reporte por Meta</button>
+              <button onClick={() => navigate("/reporte-Upz-Meta")}>Reporte por Meta</button>
             </div>
           </div>
 
@@ -224,9 +262,14 @@ function Reportes() {
             </div>
 
             <div className="botonesGenerarReportUPZ">
-              <button className="btnGnerarUpz" onClick={handleGenerarListado} disabled={loading}>
+              <button
+                className={`btnGnerarUpz btnStatus-${listStatus}`}
+                onClick={handleGenerarListado}
+                disabled={loading}
+              >
                 Generar listado
               </button>
+
 
               <button className="btnGnerarUpz"  onClick={handleDescargarLotes} disabled={loading}>
                 Descargar lotes
@@ -235,6 +278,7 @@ function Reportes() {
               <button className="btnGnerarUpz" onClick={() => resetUpzRun(upz)} disabled={loading}>
                 Reset {upz}
               </button>
+
             </div>
 
             {error && <p style={{ color: "salmon", marginTop: 10 }}>{error}</p>}

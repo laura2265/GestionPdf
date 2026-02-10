@@ -746,8 +746,6 @@ td .status-icon {
   border: 1px solid #333;
 }
 .totalReportsUpz{
-  display: flex;
-  justify-content: space-between;
 }
 
 
@@ -766,4 +764,22 @@ td .status-icon {
 
 .contentOptionMeta select, input{
   width: 75%;
+}
+
+
+.btnStatus-ok {
+  background: #1e7f3b !important;
+  border-color: #1e7f3b !important;
+  color: #fff !important;
+}
+
+.btnStatus-error {
+  background: #b42318 !important;
+  border-color: #b42318 !important;
+  color: #fff !important;
+}
+
+.btnGnerarUpz:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }

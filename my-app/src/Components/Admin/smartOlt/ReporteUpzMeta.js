@@ -17,6 +17,12 @@ export default function ReportesUpzMeta() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [listStatus, setListStatus] = useState("idle"); 
+
+  useEffect(() => {
+    setListStatus("idle");
+    setError("");
+  }, [upz, meta, onlyMintic]);
 
   const [runs, setRuns] = useState(() => {
     try {
@@ -110,14 +116,20 @@ export default function ReportesUpzMeta() {
   const handleGenerarListado = async () => {
     try {
       setError("");
+      setListStatus("idle");
       setLoading(true);
+    
       await createRun(upz);
+    
+      setListStatus("ok"); 
     } catch (e) {
+      setListStatus("error");
       setError(e?.message || "No se pudo generar el listado");
     } finally {
       setLoading(false);
     }
   };
+
 
   const downloadNextBatch = async (upzKey) => {
     try {
@@ -263,9 +275,14 @@ export default function ReportesUpzMeta() {
           </div>
 
           <div className="botonesGenerarReportUPZ">
-            <button className="btnGnerarUpz" onClick={handleGenerarListado} disabled={loading}>
+            <button
+              className={`btnGnerarUpz btnStatus-${listStatus}`}
+              onClick={handleGenerarListado}
+              disabled={loading}
+            >
               Generar listado
             </button>
+
 
             <button className="btnGnerarUpz" onClick={handleDescargarLote} disabled={loading}>
               Descargar siguiente lote
@@ -289,7 +306,6 @@ export default function ReportesUpzMeta() {
                 Progreso: lote <b>{Math.min(progreso.nextBatch, progreso.totalLotes)}</b> de <b>{progreso.totalLotes}</b>
               </p>
             )}
-
             {run?.runId && (
               <p className="meta-runid">
                 runId: <code>{run.runId}</code>
