@@ -2,6 +2,30 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./smartol.css"; // si ya lo usas en SmartOlt, mantenlo aquí también
 
+async function downloadPdfOrAlert(url) {
+    const res = await fetch(url, { method: "GET" });
+
+    const contentType = res.headers.get("content-type") || "";
+
+    if (!res.ok || contentType.includes("application/json")) {
+      const data = await res.json().catch(() => ({}));
+      const msg = data?.message || `No se pudo generar el reporte (HTTP ${res.status})`;
+      alert(msg);
+      throw new Error(msg);
+    }
+
+    const blob = await res.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = "reporte.pdf"; 
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(blobUrl);
+  }
+
 function Reportes() {
   const navigate = useNavigate();
   const menu = () => navigate("/smartolt-admin");
@@ -96,7 +120,7 @@ function Reportes() {
     url.searchParams.set("batch", String(currentRun.nextBatch));
     url.searchParams.set("size", String(currentRun.size));
 
-    window.open(url.toString(), "_blank", "noopener,noreferrer");
+    await downloadPdfOrAlert(url.toString());
 
     setUpzRuns((prev) => ({
       ...prev,
@@ -188,7 +212,6 @@ function Reportes() {
     await downloadNextBatch(upz);
   };
 
-  
   return (
     <div className="smartolt-container">
       <header className="dashboard-header">

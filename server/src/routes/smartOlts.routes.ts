@@ -4,6 +4,23 @@ export const smartOltRouter = Router();
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const isSmartOltHourlyLimit = (body: any) => {
+  const txt = typeof body === "string" ? body : JSON.stringify(body ?? {});
+  const t = txt.toLowerCase();
+  return t.includes("hourly limit") || t.includes("reached the hourly limit");
+};
+
+class HttpError extends Error {
+  status: number;
+  payload: any;
+  constructor(status: number, message: string, payload?: any) {
+    super(message);
+    this.status = status;
+    this.payload = payload ?? {};
+  }
+}
+
+
 async function mapLimit<T, R>(
   items: T[],
   limit: number,
@@ -228,10 +245,10 @@ smartOltRouter.get("/onu-get", async (req, res, next) => {
     );
 
     if (!r.ok) {
-      return res.status(r.status ?? 500).json({
-        message: "Error con SmartOLT",
-        body: r.data,
-      });
+      if (isSmartOltHourlyLimit(r.data)) {
+        throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", r.data);
+      }
+      throw new HttpError(r.status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", r.data);
     }
 
     const raw = Array.isArray(r.data?.onus) ? r.data.onus : [];
@@ -275,10 +292,10 @@ smartOltRouter.get("/details-onu-id/:id", async (req, res, next) => {
     );
 
     if (!r.ok) {
-      return res.status(r.status ?? 500).json({
-        message: "Error con SmartOLT",
-        body: r.data,
-      });
+      if (isSmartOltHourlyLimit(r.data)) {
+        throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", r.data);
+      }
+      throw new HttpError(r.status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", r.data);
     }
 
     return res.json({
@@ -362,10 +379,10 @@ smartOltRouter.get("/velocidad-onu-id/:id", async (req, res, next) => {
     );
 
     if (!r.ok) {
-      return res.status(r.status ?? 500).json({
-        message: "Error con SmartOLT",
-        body: r.data,
-      });
+      if (isSmartOltHourlyLimit(r.data)) {
+        throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", r.data);
+      }
+      throw new HttpError(r.status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", r.data);
     }
 
     return res.json({
@@ -389,8 +406,12 @@ smartOltRouter.get("/report/pdf", async (req, res, next) => {
     const refresh = req.query.refresh === "true";
 
     const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
+
     if (!r.ok) {
-      return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
+      if (isSmartOltHourlyLimit(r.data)) {
+        throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", r.data);
+      }
+      throw new HttpError(r.status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", r.data);
     }
 
     const onus = Array.isArray(r.data?.onus) ? r.data.onus : [];
@@ -722,10 +743,10 @@ smartOltRouter.get("/report/onu/:id", async (req, res, next) => {
     );
 
     if (!detailsR.ok) {
-      return res.status(detailsR.status ?? 500).json({
-        message: "Error consultando detalles ONU",
-        body: detailsR.data,
-      });
+      if (isSmartOltHourlyLimit(detailsR.data)) {
+        throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", detailsR.data);
+      }
+      throw new HttpError(detailsR.status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", detailsR.data);
     }
 
     const onu = detailsR.data?.onu_details ?? null;
@@ -1126,8 +1147,12 @@ smartOltRouter.get("/report/pdf-upz/:upz/run", async (req, res, next) => {
     const onlyMintic = String(req.query.mintic ?? "true").toLowerCase() === "true";
 
     const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
-    if (!r.ok) return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
-
+    if (!r.ok) {
+      if (isSmartOltHourlyLimit(r.data)) {
+        throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", r.data);
+      }
+      throw new HttpError(r.status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", r.data);
+    }
     const raw = Array.isArray(r.data?.onus) ? r.data.onus : [];
     const onus = raw.map((x: any) => x?.onu_details ?? x);
 
@@ -1227,8 +1252,12 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
     for (const id of idsBatch) exported.add(id);
 
     const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
-    if (!r.ok) return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
-
+    if (!r.ok) {
+      if (isSmartOltHourlyLimit(r.data)) {
+        throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", r.data);
+      }
+      throw new HttpError(r.status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", r.data);
+    }
     const raw = Array.isArray(r.data?.onus) ? r.data.onus : [];
     const onus = raw.map((x: any) => x?.onu_details ?? x);
 
@@ -1259,19 +1288,50 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
 
     const graphMap = new Map<string, { signal?: any; trafico?: any }>();
 
+    let smartOltLimitReached = false;
+
     await mapLimit(jobs, CONCURRENCY, async (job) => {
-      await sleep(120);
-      const cacheKey = `${job.kind}:${job.id}:monthly`;
-      const url = job.kind === "signal" ? signalUrl(job.id) : trafUrl(job.id);
+      if (smartOltLimitReached) return;
 
-      const img = await fetchGraphAsDataUrl(url, cacheKey);
+        await sleep(120);
 
-      const prev = graphMap.get(job.id) || {};
-      if (job.kind === "signal") prev.signal = img;
-      else prev.trafico = img;
-      graphMap.set(job.id, prev);
+        try {
+          const key = `${job.kind}:${job.id}:monthly`;
+          const url = job.kind === "signal" ? signalUrl(job.id) : trafUrl(job.id);
+        
+          const img = await fetchGraphAsDataUrl(url, key);
+        
+          // 🔴 Detectar hourly limit
+          const raw = JSON.stringify(img ?? {}).toLowerCase();
+        
+          if (raw.includes("hourly limit")) {
+            smartOltLimitReached = true;
+            return;
+          }
+        
+          const prev = graphMap.get(job.id) || {};
+          if (job.kind === "signal") prev.signal = img;
+          else prev.trafico = img;
+          graphMap.set(job.id, prev);
+        
+        } catch (err: any) {
+          const txt = String(err?.message ?? err).toLowerCase();
+        
+          if (txt.includes("hourly limit")) {
+            smartOltLimitReached = true;
+            return;
+          }
+        
+          throw err;
+        }
       return true;
     });
+
+    if (smartOltLimitReached) {
+      return res.status(429).json({
+        message: "Se activó el límite de consultas de SmartOLT (hourly limit). No se generó el reporte.",
+      });
+    }
 
     const chunk = <T,>(arr: T[], n: number) => {
       const out: T[][] = [];
@@ -1442,7 +1502,7 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
   }
 });
 
-smartOltRouter.post("/report/pdf-upz/:upz/reset", (req, res) => {
+smartOltRouter.post("/report/pdf-upz/:upz/reset", (req, res, next) => {
   try {
     const upz = String(req.params.upz || "").trim().toLowerCase();
     if (!["lucero", "tesoro"].includes(upz)) {
@@ -1457,7 +1517,13 @@ smartOltRouter.post("/report/pdf-upz/:upz/reset", (req, res) => {
     }
     return res.json({ ok: true, message: "Reset UPZ aplicado", upz, onlyMintic });
   } catch (e: any) {
-    return res.status(500).json({ message: e?.message || "Error reseteando UPZ" });
+    if (e?.status) {
+      return res.status(e.status).json({
+        message: e.message,
+        body: e.payload ?? null,
+      });
+    }
+    next(e);
   }
 });
 
@@ -1548,8 +1614,12 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz/run", async (req, res, next) => {
 
 
     const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
-    if (!r.ok) return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
-
+    if (!r.ok) {
+      if (isSmartOltHourlyLimit(r.data)) {
+        throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", r.data);
+      }
+      throw new HttpError(r.status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", r.data);
+    }
     const raw = Array.isArray(r.data?.onus) ? r.data.onus : [];
     const onus = raw.map((x: any) => x?.onu_details ?? x);
 
@@ -1687,21 +1757,22 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz", async (req, res, next) => {
       return res.status(404).json({ message: "Lote vacío (probablemente ya descargaste todo)" });
     }
 
-    // 1) Traer detalles una vez
     const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
-    if (!r.ok) return res.status(r.status ?? 500).json({ message: "Error con SmartOLT", body: r.data });
-
+    if (!r.ok) {
+      if (isSmartOltHourlyLimit(r.data)) {
+        throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", r.data);
+      }
+      throw new HttpError(r.status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", r.data);
+    }
     const raw = Array.isArray(r.data?.onus) ? r.data.onus : [];
     const onus = raw.map((x: any) => x?.onu_details ?? x);
 
-    // 2) index por id
     const byId = new Map<string, any>();
     for (const o of onus) {
       const id = String(o?.unique_external_id ?? o?.sn ?? "").trim();
       if (id) byId.set(id, o);
     }
 
-    // 3) lote final con datos
     const list = idsBatch.map((id) => byId.get(id)).filter(Boolean);
 
     const CONCURRENCY = 2;
@@ -1723,18 +1794,52 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz", async (req, res, next) => {
 
     const graphMap = new Map<string, { signal?: any; trafico?: any }>();
 
-    await mapLimit(jobs, CONCURRENCY, async (job) => {
-      await sleep(120);
-      const key = `${job.kind}:${job.id}:monthly`;
-      const url = job.kind === "signal" ? signalUrl(job.id) : trafUrl(job.id);
-      const img = await fetchGraphAsDataUrl(url, key);
+    let smartOltLimitReached = false;
 
-      const prev = graphMap.get(job.id) || {};
-      if (job.kind === "signal") prev.signal = img;
-      else prev.trafico = img;
-      graphMap.set(job.id, prev);
+    await mapLimit(jobs, CONCURRENCY, async (job) => {
+      if (smartOltLimitReached) return;
+
+        await sleep(120);
+
+        try {
+          const key = `${job.kind}:${job.id}:monthly`;
+          const url = job.kind === "signal" ? signalUrl(job.id) : trafUrl(job.id);
+        
+          const img = await fetchGraphAsDataUrl(url, key);
+        
+          // 🔴 Detectar hourly limit
+          const raw = JSON.stringify(img ?? {}).toLowerCase();
+        
+          if (raw.includes("hourly limit")) {
+            smartOltLimitReached = true;
+            return;
+          }
+        
+          const prev = graphMap.get(job.id) || {};
+          if (job.kind === "signal") prev.signal = img;
+          else prev.trafico = img;
+          graphMap.set(job.id, prev);
+        
+        } catch (err: any) {
+          const txt = String(err?.message ?? err).toLowerCase();
+        
+          if (txt.includes("hourly limit")) {
+            smartOltLimitReached = true;
+            return;
+          }
+        
+          throw err;
+        }
       return true;
     });
+
+    if (smartOltLimitReached) {
+      return res.status(429).json({
+        message: "Se activó el límite de consultas de SmartOLT (hourly limit). No se generó el reporte.",
+      });
+    }
+
+    
     const chunk = <T,>(arr: T[], n: number) => {
       const out: T[][] = [];
       for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
@@ -1907,7 +2012,7 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz", async (req, res, next) => {
     next(e);
   }
 });
-smartOltRouter.post("/report/pdf-upz-meta/:upz/reset", (req, res) => {
+smartOltRouter.post("/report/pdf-upz-meta/:upz/reset", (req, res, next) => {
   try {
     const upz = String(req.params.upz || "").trim().toLowerCase();
     if (!["lucero", "tesoro"].includes(upz)) {
@@ -1931,7 +2036,13 @@ smartOltRouter.post("/report/pdf-upz-meta/:upz/reset", (req, res) => {
     }
 
     return res.json({ ok: true, message: "Reset aplicado", upz, meta, onlyMintic });
-  } catch (e: any) {
-    return res.status(500).json({ message: e?.message || "Error reseteando" });
+  }catch (e: any) {
+      if (e?.status) {
+        return res.status(e.status).json({
+          message: e.message,
+          body: e.payload ?? null,
+        });
+      }
+      next(e);
   }
 });
