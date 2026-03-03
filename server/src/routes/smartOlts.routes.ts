@@ -156,7 +156,6 @@ async function fetchWithCache(
     return { ok: true, fromCache: true, cachedAt: cached.at, data: cached.data };
   }
 
-  // 2) Timeout controlado (sube a 25s para redes lentas)
   const controller = new AbortController();
   const timeoutMs = 25_000;
   const t = setTimeout(() => controller.abort(), timeoutMs);
@@ -173,7 +172,6 @@ async function fetchWithCache(
 
     const data = await resp.json().catch(() => ({}));
 
-    // 3) Si SmartOLT respondió pero NO ok: usa cache si existe
     if (!resp.ok) {
       if (cached) {
         return {
@@ -186,7 +184,6 @@ async function fetchWithCache(
         };
       }
 
-      // Caso típico que tú ya manejabas (403)
       if (resp.status === 403) {
         return {
           ok: true,
@@ -201,11 +198,9 @@ async function fetchWithCache(
       return { ok: false, status: resp.status, data };
     }
 
-    // 4) OK: cachea y retorna
     setCached(key, data);
     return { ok: true, fromCache: false, cachedAt: Date.now(), data };
   } catch (err: any) {
-    // 5) Aquí caen los ConnectTimeout / DNS / ECONNRESET / AbortError
     if (cached) {
       return {
         ok: true,
@@ -228,7 +223,7 @@ async function fetchWithCache(
 }
 
 
-
+//ruta de consulta general
 smartOltRouter.get("/onu-get", async (req, res, next) => {
   try {
     if (!tokenSmart) {
@@ -275,6 +270,36 @@ smartOltRouter.get("/onu-get", async (req, res, next) => {
   }
 });
 
+//zonas
+smartOltRouter.get("/get-zonas", async (req, res, next)=>{
+  try{
+    if(!tokenSmart) return res.status(500).json({message: "El token no es valido"})
+
+      const r = await fetch(`${baseUrl}/system/get_zones`,{
+        method: "GET",
+        headers:{
+          "X-Token": tokenSmart ?? "",
+          Accept: "application/json",
+        },
+      })
+
+      if(!r.ok){
+        return res.status(500).json({message: "Error al consultar las zonas de smartOlt"})
+      }
+
+      const result = await r.json();
+      const data = result.response
+
+      console.log(data)
+      return res.json({
+        message: "Consulta exitosa",
+        data: data
+      })
+
+  }catch(e){
+    next(e)
+  }
+})
 
 smartOltRouter.get("/details-onu-id/:id", async (req, res, next) => {
   try {
@@ -1109,7 +1134,6 @@ const upzOf = (o: any): UpzKey | "otros" => {
   if (/\bp1\b/.test(t)) return "lucero";
   if (/\bp2\b/.test(t)) return "tesoro";
 
-  // fallback legacy: LF3GRP1 / LF3GRP2
   if (t.includes("lf3grp1") || /lf3\s*-?\s*grp\s*-?\s*1/.test(t)) return "lucero";
   if (t.includes("lf3grp2") || /lf3\s*-?\s*grp\s*-?\s*2/.test(t)) return "tesoro";
 
@@ -1301,7 +1325,6 @@ smartOltRouter.get("/report/pdf-upz/:upz", async (req, res, next) => {
         
           const img = await fetchGraphAsDataUrl(url, key);
         
-          // 🔴 Detectar hourly limit
           const raw = JSON.stringify(img ?? {}).toLowerCase();
         
           if (raw.includes("hourly limit")) {
@@ -1636,7 +1659,6 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz/run", async (req, res, next) => {
         return true;
       });
 
-      // Ordena por authorization_date ASC (y si no tiene fecha, al final)
       filtered.sort((a: any, b: any) => {
         const da = dateOf(a)?.getTime();
         const db = dateOf(b)?.getTime();
@@ -2012,6 +2034,7 @@ smartOltRouter.get("/report/pdf-upz-meta/:upz", async (req, res, next) => {
     next(e);
   }
 });
+
 smartOltRouter.post("/report/pdf-upz-meta/:upz/reset", (req, res, next) => {
   try {
     const upz = String(req.params.upz || "").trim().toLowerCase();
@@ -2045,4 +2068,466 @@ smartOltRouter.post("/report/pdf-upz-meta/:upz/reset", (req, res, next) => {
       }
       next(e);
   }
+});
+
+
+//////////////////////////////////////////////
+// //////////////////////Reporte por zona
+/////////////////////////////////////////////////
+// =====================================================
+type ZonaRun = {
+  zona: string;
+  onlyMintic: boolean;
+  ids: string[];
+  totalZona: number;
+  yaExportadasAntes: number;
+  createdAt: number;
+  total: number;
+};
+const zonaRuns = new Map<string, ZonaRun>();
+
+const exportedZonaByKey = new Map<string, Set<string>>();
+const zonaKeyOf = (zona: string, onlyMintic: boolean) =>
+  `${zona.toLowerCase()}|${onlyMintic ? "mintic" : "all"}`;
+
+const cleanupZonaRuns = () => {
+  const now = Date.now();
+  for (const [id, run] of zonaRuns.entries()) {
+    if (now - run.createdAt > RUN_TTL_MS) zonaRuns.delete(id);
+  }
+};
+
+const getComment = (o: any) => String(o?.address ?? o?.comment ?? "").trim();
+const isMinticStrictGroup = (o: any) => {
+  const c = getComment(o).toLowerCase();
+  const hasMintic = c.includes("mintic");
+  const hasGrp1 = c.includes("lf3grp1");
+  const hasGrp2 = c.includes("lf3grp2");
+  return hasMintic && (hasGrp1 || hasGrp2);
+};
+
+const upzLabelFromComment = (o: any) => {
+  const c = getComment(o).toLowerCase();
+  if (c.includes("lf3grp1")) return "Lucero";
+  if (c.includes("lf3grp2")) return "Tesoro";
+  return "Otras";
+};
+
+const zonaOf = (o: any) =>
+  String(o?.zone ?? o?.zone_name ?? o?.zona ?? "").trim();
+
+ function uniqueExternalIds(onus: any[]): string[] {
+  const ids = onus
+    .map(o => o?.external_id ?? o?.unique_external_id ?? o?.externalId ?? o?.id)
+    .filter(Boolean)
+    .map((x: any) => String(x).trim());
+
+  return Array.from(new Set(ids));
+}
+
+smartOltRouter.get("/report/pdf-zona/run", async (req, res, next) => {
+  try {
+    cleanupZonaRuns();
+    if (!tokenSmart) return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
+
+    const refresh = req.query.refresh === "true";
+    const zona = String(req.query.zona ?? "").trim();
+    if (!zona) return res.status(400).json({ message: "Falta query param: zona" });
+
+    const onlyMintic = String(req.query.mintic ?? "true").toLowerCase() === "true";
+
+    const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh });
+    if (!r.ok) {
+      if (isSmartOltHourlyLimit(r.data)) {
+        throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", r.data);
+      }
+      throw new HttpError(r.status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", r.data);
+    }
+
+    const raw = Array.isArray(r.data?.onus) ? r.data.onus : [];
+    const onus = raw.map((x: any) => x?.onu_details ?? x);
+
+    const filtered = onus
+      .filter((o: any) => (onlyMintic ? isMinticStrictGroup(o) : true))
+      .filter((o: any) => zonaOf(o).toLowerCase() === zona.toLowerCase());
+      
+      const isMinticGrp1 = (o:any) => {
+        const c = getComment(o).toLowerCase();
+        return c.includes("mintic") && c.includes("lf3grp1");
+      };
+
+      const isMinticGrp2 = (o:any) => {
+        const c = getComment(o).toLowerCase();
+        return c.includes("mintic") && c.includes("lf3grp2");
+      };
+
+      console.log("zona recibida:", req.query.zona);
+
+      const key = zonaKeyOf(zona, onlyMintic);
+      const exported =
+        refresh ? new Set<string>() : (exportedZonaByKey.get(key) ?? new Set<string>());
+      exportedZonaByKey.set(key, exported);
+
+      const p1 = onus
+        .filter(o => zonaOf(o).toLowerCase() === zona.toLowerCase())
+        .filter(o => isMinticGrp1(o));
+
+      const p2 = onus
+        .filter(o => zonaOf(o).toLowerCase() === zona.toLowerCase())
+        .filter(o => isMinticGrp2(o));
+
+      let allIds = [...uniqueExternalIds(p1), ...uniqueExternalIds(p2)];
+      allIds = Array.from(new Set(allIds));
+      const totalZona = allIds.length;
+
+      let ids = allIds.filter(id => !exported.has(id));
+      const yaExportadasAntes = totalZona - ids.length;ids = Array.from(new Set(ids));
+
+      ids = ids.filter(id => !exported.has(id));
+
+    const runId = `zona-${zona}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    zonaRuns.set(runId, {
+      zona,
+      onlyMintic,
+      ids,
+      totalZona,
+      yaExportadasAntes,
+      createdAt: Date.now(),
+      total: ids.length,
+    });
+
+    return res.json({
+      runId,
+      zona,
+      onlyMintic,
+      totalZona,                 
+      yaExportadasAntes,        
+      pendientes: ids.length,
+      total: ids.length,
+      totalLotes: Math.ceil(ids.length / 100),
+      expiresInMinutes: Math.round(RUN_TTL_MS / 60000),
+      exampleDownload: `/api/smart_olt/report/pdf-zona?runId=${runId}&batch=0&size=100`,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+smartOltRouter.get("/report/pdf-zona", async (req, res, next) => {
+  try {
+    cleanupZonaRuns();
+    if (!tokenSmart) return res.status(500).json({ message: "Falta SMART_OLT_TOKEN" });
+
+    const runId = String(req.query.runId ?? "").trim();
+    if (!runId) return res.status(400).json({ message: "Falta runId" });
+
+    const run = zonaRuns.get(runId);
+    if (!run) return res.status(400).json({ message: "runId inválido o expirado" });
+
+    const batch = Math.max(0, Number(req.query.batch ?? 0) || 0);
+    const size = Math.min(100, Math.max(3, Number(req.query.size ?? 100) || 100));
+
+    const start = batch * size;
+    const end = start + size;
+    const idsBatch = run.ids.slice(start, end);
+    if (!idsBatch.length) return res.status(404).json({ message: "Lote vacío" });
+
+    // marcar exportados para no repetir entre PDFs
+    const key = zonaKeyOf(run.zona, run.onlyMintic);
+    const exported = exportedZonaByKey.get(key) ?? new Set<string>();
+    exportedZonaByKey.set(key, exported);
+    for (const id of idsBatch) exported.add(id);
+
+    // recargar catálogo ONUs
+    const r = await fetchWithCache("onu-get", `${baseUrl}/onu/get_all_onus_details`, { refresh: false });
+    if (!r.ok) throw new HttpError(r.status ?? 503, "Error consultando SmartOLT", r.data);
+
+    const raw = Array.isArray(r.data?.onus) ? r.data.onus : [];
+    const onus = raw.map((x: any) => x?.onu_details ?? x);
+
+    const byId = new Map<string, any>();
+    for (const o of onus) {
+      const id = String(o?.unique_external_id ?? o?.sn ?? "").trim();
+      if (id) byId.set(id, o);
+    }
+
+    const list = idsBatch.map((id) => byId.get(id)).filter(Boolean);
+
+    // separar por UPZ dentro de la zona
+    const lucero = list.filter((o) => upzLabelFromComment(o) === "Lucero");
+    const tesoro = list.filter((o) => upzLabelFromComment(o) === "Tesoro");
+
+    const now = new Date();
+
+    const renderRow = (o: any) => `
+      <tr>
+        <td>${esc(o?.status ?? "-")}</td>
+        <td>${esc(o?.name ?? "-")}</td>
+        <td>${esc(o?.sn ?? "-")}</td>
+        <td>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</td>
+        <td>${esc(o?.board ?? "-")}/${esc(o?.port ?? "-")}/${esc(o?.onu ?? "-")}</td>
+        <td>${esc(zonaOf(o) || "-")}</td>
+        <td>${esc(o?.odb ?? "-")}</td>
+        <td>${esc(o?.vlan ?? "-")}</td>
+        <td>${esc(o?.signal_1310 ?? "-")}</td>
+        <td>${esc(o?.authorization_date ?? "-")}</td>
+        <td>${esc(getComment(o) || "-")}</td>
+        <td>${esc(upzLabelFromComment(o))}</td>
+      </tr>
+    `;
+
+    const renderTable = (title: string, arr: any[]) => `
+      <div class="section">
+        <h2>${esc(title)} <span class="count">(${arr.length})</span></h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Estado</th><th>Nombre</th><th>SN</th><th>OLT</th>
+              <th>Board/Port/ONU</th><th>Zona</th><th>ODB</th><th>VLAN</th>
+              <th>Signal 1310</th><th>Auth</th><th>Comentario</th><th>UPZ</th>
+            </tr>
+          </thead>
+          <tbody>${arr.map(renderRow).join("")}</tbody>
+        </table>
+      </div>
+    `;
+
+    // --- Igual que reporte por META: traer gráficos y armar cards (4 por página) ---
+const CONCURRENCY = 2;
+
+const signalUrl = (id: string) =>
+  `${baseUrl}/onu/get_onu_signal_graph/${encodeURIComponent(id)}/monthly`;
+const trafUrl = (id: string) =>
+  `${baseUrl}/onu/get_onu_traffic_graph/${encodeURIComponent(id)}/monthly`;
+
+type Job = { kind: "signal" | "trafico"; id: string };
+const jobs: Job[] = [];
+
+for (const o of list) {
+  const id = String(o?.unique_external_id ?? o?.sn ?? "").trim();
+  if (!id) continue;
+  jobs.push({ kind: "signal", id });
+  jobs.push({ kind: "trafico", id });
+}
+
+const graphMap = new Map<string, { signal?: any; trafico?: any }>();
+let smartOltLimitReached = false;
+
+await mapLimit(jobs, CONCURRENCY, async (job) => {
+  if (smartOltLimitReached) return;
+
+  await sleep(120);
+
+  try {
+    const cacheKey = `${job.kind}:${job.id}:monthly`;
+    const url = job.kind === "signal" ? signalUrl(job.id) : trafUrl(job.id);
+
+    const img = await fetchGraphAsDataUrl(url, cacheKey);
+
+    const rawTxt = JSON.stringify(img ?? {}).toLowerCase();
+    if (rawTxt.includes("hourly limit")) {
+      smartOltLimitReached = true;
+      return;
+    }
+
+    const prev = graphMap.get(job.id) || {};
+    if (job.kind === "signal") prev.signal = img;
+    else prev.trafico = img;
+    graphMap.set(job.id, prev);
+  } catch (err: any) {
+    const txt = String(err?.message ?? err).toLowerCase();
+    if (txt.includes("hourly limit")) {
+      smartOltLimitReached = true;
+      return;
+    }
+    throw err;
+  }
+  return true;
+});
+
+if (smartOltLimitReached) {
+  return res.status(429).json({
+    message: "Se activó el límite de consultas de SmartOLT (hourly limit). No se generó el reporte.",
+  });
+}
+
+const chunk = <T,>(arr: T[], n: number) => {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+};
+
+const pages = chunk(list, 4);
+
+const pillClass = (status: any) => {
+  const s = String(status ?? "").toLowerCase();
+  if (s === "online") return "online";
+  if (s === "los") return "los";
+  if (s === "power failed") return "pf";
+  return "unk";
+};
+
+const renderGraphBox = (title: string, img: any) => {
+  if (img?.ok && img?.dataUrl) {
+    return `
+      <div class="g">
+        <div class="gt">${esc(title)}</div>
+        <img src="${img.dataUrl}" />
+      </div>
+    `;
+  }
+  return `
+    <div class="g">
+      <div class="gt">${esc(title)}</div>
+      <div class="gempty">${esc(img?.text ?? "Sin imagen")}</div>
+    </div>
+  `;
+};
+
+const renderCard = (o: any) => {
+  const onuId = String(o?.unique_external_id ?? o?.sn ?? "").trim();
+  const gm = graphMap.get(onuId) || {};
+  const upzLabel = upzLabelFromComment(o); // Lucero / Tesoro
+  return `
+    <div class="card">
+      <div class="head">
+        <div class="left">
+          <div class="name">${esc(o?.name ?? onuId)}</div>
+          <div class="sub">
+            <span class="pill ${pillClass(o?.status)}">${esc(o?.status ?? "-")}</span>
+            <span class="pill upz">${esc(upzLabel)}</span>
+            <span class="muted">OLT:</span> <b>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</b>
+            <span class="muted">CATV:</span> <b>${esc(o?.catv ?? "-")}</b>
+          </div>
+          <div class="comment"><span class="muted">Zona:</span> ${esc(zonaOf(o) || "-")}</div>
+          <div class="comment"><span class="muted">Comentario:</span> ${esc(o?.address ?? o?.comment ?? "-")}</div>
+          <div class="comment"><span class="muted">Fecha autorización:</span> ${esc(o?.authorization_date ?? "-")}</div>
+        </div>
+        <div class="right">
+          <div class="muted">External ID</div>
+          <div class="idv">${esc(onuId)}</div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        ${renderGraphBox("Señal (monthly)", gm.signal)}
+        ${renderGraphBox("Tráfico (monthly)", gm.trafico)}
+      </div>
+    </div>
+  `;
+};
+
+// métricas acumuladas (para mostrar “cuántas se van generando”)
+const key2 = zonaKeyOf(run.zona, run.onlyMintic);
+const exportedNow = exportedZonaByKey.get(key2) ?? new Set<string>();
+const generadasAcum = exportedNow.size;
+const restantes = Math.max(0, (run.totalZona ?? 0) - generadasAcum);
+
+const renderPage = (items: any[]) => `
+  <section class="page">
+    <div class="pageHead">
+      <h1>Reporte Zona ${esc(run.zona)} | MINTIC LF3GRP1/LF3GRP2</h1>
+      <div class="meta">
+        Generado: ${esc(now.toLocaleString())}
+        | Total zona: ${esc(run.totalZona)}
+        | Generadas: ${esc(generadasAcum)}
+        | Restantes: ${esc(restantes)}
+        | Lote: ${esc(batch)} | Rango: ${esc(start)}-${esc(end - 1)}
+      </div>
+    </div>
+    <div class="cards">
+      ${items.map(renderCard).join("")}
+    </div>
+  </section>
+`;
+
+const html = `
+  <!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8"/>
+      <title>Reporte Zona ${esc(run.zona)}</title>
+      <style>
+        *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+        body{ margin:0; color:#111; }
+        .page{ padding:10mm; page-break-after: always; }
+        .page:last-child{ page-break-after: auto; }
+        .pageHead{ display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
+        h1{ margin:0; font-size:16px; }
+        .meta{ font-size:10px; color:#555; }
+        .cards{ display:flex; flex-direction:column; gap:8px; }
+        .card{ border:1px solid #e5e7eb; border-radius:12px; padding:8px; page-break-inside: avoid; break-inside: avoid; }
+        .head{ display:flex; justify-content:space-between; gap:10px; }
+        .name{ font-size:12px; font-weight:800; }
+        .sub{ margin-top:2px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+        .comment{ margin-top:4px; font-size:10px; color:#111; }
+        .muted{ color:#666; font-size:10px; }
+        .right{ min-width:180px; text-align:right; }
+        .idv{ font-weight:800; font-size:10px; word-break:break-all; }
+        .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:9px; border:1px solid #ddd; }
+        .pill.online{ border-color:#2ecc71; color:#2ecc71; }
+        .pill.los{ border-color:#e74c3c; color:#e74c3c; }
+        .pill.pf{ border-color:#f1c40f; color:#f1c40f; }
+        .pill.unk{ border-color:#7f8c8d; color:#7f8c8d; }
+        .pill.upz{ border-color:#4b5563; color:#4b5563; }
+        .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+        .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
+        .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
+        img{ width:100%; height:auto; display:block; max-height:220px; object-fit:contain; }
+        .gempty{
+          min-height: 170px;
+          display:flex; align-items:center; justify-content:center;
+          text-align:center; font-size:9px; color:#666;
+          border:1px dashed #ddd; border-radius:8px; padding:8px; background:#fafafa;
+        }
+      </style>
+    </head>
+    <body>
+      ${pages.map(renderPage).join("")}
+    </body>
+  </html>
+`;
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+
+    try {
+      const page = await browser.newPage();
+      page.setDefaultTimeout(0);
+      await page.setContent(html, { waitUntil: "domcontentloaded" });
+
+      const pdf = await page.pdf({
+        format: "A4",
+        landscape: true,
+        printBackground: true,
+        margin: { top: "8mm", right: "6mm", bottom: "8mm", left: "6mm" },
+      });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="reporte-zona-${run.zona}-batch-${batch}.pdf"`);
+      return res.status(200).send(pdf);
+    } finally {
+      await browser.close();
+    }
+  } catch (e) {
+    next(e);
+  }
+});
+
+smartOltRouter.post("/report/pdf-zona/reset", (req, res) => {
+  const zona = String(req.query.zona ?? "").trim();
+  if (!zona) return res.status(400).json({ message: "Falta zona" });
+
+  const onlyMintic = String(req.query.mintic ?? "true").toLowerCase() === "true";
+  const key = zonaKeyOf(zona, onlyMintic);
+  exportedZonaByKey.delete(key);
+
+  for (const [runId, run] of zonaRuns.entries()) {
+    if (run.zona.toLowerCase() === zona.toLowerCase() && run.onlyMintic === onlyMintic) {
+      zonaRuns.delete(runId);
+    }
+  }
+  return res.json({ ok: true, message: "Reset zona aplicado", zona, onlyMintic });
 });

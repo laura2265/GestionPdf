@@ -685,11 +685,19 @@ td .status-icon {
   border-bottom: 1px solid #333333b6;
 }
 
-.botonTipoUpz{
+.botonTipoUpz, .botonTipoUpz select {
   border: 1px solid #333333af;
   border-radius: 7px;
    padding: .5rem;
    color: #333333af;
+}
+.botonTipoUpz option{
+  color: #333;
+  border: 1px solid #333;
+}
+.botonTipoUpz option:hover{
+  background-color: tomato;
+  transition: 1s;
 }
 .botonTipoUpz:has(input:checked),
 .botonTipoUpz:hover {
@@ -704,7 +712,6 @@ td .status-icon {
   align-items: center;
   margin-right: 12px;
 }
-
 .checkUpz{
   margin: 2%;
 }

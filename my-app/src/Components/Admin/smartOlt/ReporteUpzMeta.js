@@ -232,7 +232,8 @@ export default function ReportesUpzMeta() {
 
             <div className="dropdown-reportes-menu">
               <button onClick={() => navigate("/reportes")}>Reporte por UPZ</button>
-              <button onClick={() => navigate("/reportes/meta")}>Reporte por Meta</button>
+              <button onClick={() => navigate("/reporte-Upz-Meta")}>Reporte por Meta</button>
+              <button onClick={() => navigate("/reporte-zona")}>Reporte por Zona</button>
             </div>
           </div>
 

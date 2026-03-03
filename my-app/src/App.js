@@ -18,6 +18,7 @@ import SmartOlt from './Components/Admin/smartOlt/SmartOlt.js';
 import InformacionIdExternal from './Components/Admin/smartOlt/InformacionId.js';
 import Reportes from './Components/Admin/smartOlt/Reportes.js';
 import ReporteUpzMeta from './Components/Admin/smartOlt/ReporteUpzMeta.js';
+import ReporteZona from './Components/Admin/smartOlt/ReporteZona.js';
 
 function App() {  
   return (
@@ -42,6 +43,11 @@ function App() {
           <Route path='/reporte-Upz-Meta' element={
             <PrivateRouter allowedRoles={[1]}>
               <ReporteUpzMeta />
+            </PrivateRouter>
+          }/>
+          <Route path='/reporte-zona' element={
+            <PrivateRouter allowedRoles={[1]}>
+              <ReporteZona />
             </PrivateRouter>
           }/>
           

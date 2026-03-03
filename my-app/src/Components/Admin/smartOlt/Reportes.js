@@ -93,7 +93,6 @@ function Reportes() {
       createdAt: Date.now(),
       onlyMintic,
     };
-
     setUpzRuns((prev) => ({ ...prev, [upzKey]: newRun }));
     return newRun;
   };
@@ -107,7 +106,6 @@ function Reportes() {
       currentRun = await createUpzRun(upzKey);
     }
 
-    // ✅ AQUÍ el fix
     const totalBatches = Math.ceil(currentRun.total / currentRun.size);
 
     if (currentRun.nextBatch >= totalBatches) {
@@ -224,6 +222,7 @@ function Reportes() {
             <div className="dropdown-reportes-menu">
               <button onClick={() => navigate("/reportes")}>Reporte por UPZ</button>
               <button onClick={() => navigate("/reporte-Upz-Meta")}>Reporte por Meta</button>
+              <button onClick={() => navigate("/reporte-zona")}>Reporte por Zona</button>
             </div>
           </div>
 
