@@ -116,112 +116,122 @@ export default function InformacionUser() {
   return (
     <div className="user-overview">
         <header className="dashboard-header">
-      <h1 className="dashboard-title">Informació Del Usuario</h1>
-      <div className='header-actions'>
-        <button
-          className="btn danger"
-          onClick={Usuarios} 
-        >
-          Volver
-        </button>
-       
-      </div>
-    </header>
-      
-      <div className="uo-grid">
-        <section className="card uo-profile">
-          <h2>Perfil</h2>
-          <div className="uo-profile-rows">
-            <div><span>Nombre:</span><strong>{user.full_name || user.name}</strong></div>
-            <div><span>Email:</span><strong>{user.email}</strong></div>
-            <div><span>Teléfono:</span><strong>{user.phone || "—"}</strong></div>
-            <div><span>Rol(es):</span><strong>{roleNames}</strong></div>
-            <div><span>Estado:</span><strong className={user.is_active ? "ok" : "bad"}>{user.is_active ? "Activo" : "Inactivo"}</strong></div>
-          </div>
-        </section>
+          <h1 className="dashboard-title">Informació Del Usuario</h1>
+          <div className='header-actions'>
+            <button
+              className="btn danger"
+              onClick={Usuarios} 
+            >
+              Volver
+            </button>
 
-        <section className="card uo-stats">
-          <h2>Métricas</h2>
-          <div className="uo-stats-grid">
-            <div className="stat">
-              <div className="stat-n">{history.length}</div>
-              <div className="stat-l">Movimientos</div>
-            </div>
-            <div className="stat">
-              <div className="stat-n">
-                {history.filter(h => (h.to_status || "").toUpperCase() === "APROBADO").length}
-              </div>
-              <div className="stat-l">Aprobadas</div>
-            </div>
-            <div className="stat">
-              <div className="stat-n">
-                {history.filter(h => (h.to_status || "").toUpperCase() === "RECHAZADO").length}
-              </div>
-              <div className="stat-l">Rechazadas</div>
-            </div>
           </div>
-        </section>
-      </div>
+        </header>
+        <div className="contentInfoUser">
+          <div className="uo-grid">
+            <section className="card1 uo-profile">
+                <h2>Perfil</h2>
+                <div className="contentInfoUser1">
+                  <div className="uo-profile-rows">
+                    <div><span>Nombre:</span> <strong>{user.full_name || user.name}</strong></div>
+                    <div><span>Email:</span> <strong>{user.email}</strong></div>
+                    <div><span>Teléfono:</span> <strong>{user.phone || "—"}</strong></div>
+                  </div>
+                  <div className="uo-profile-rows">
+                    <div><span>Rol(es):</span> <strong>{roleNames}</strong></div>
+                    <div><span>Estado:</span> <strong className={user.is_active ? "ok" : "bad"}>{user.is_active ? "Activo" : "Inactivo"}</strong></div>
+                  </div>
+                </div>
+              </section>
 
-      <section className="card uo-history">
-        <div className="uo-history-head">
-          <h2>Historial </h2>
-          <div className="uo-filters">
-            <input
-              placeholder="Buscar por #solicitud, comentario o estado…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-            <select value={status} onChange={(e)=>setStatus(e.target.value)}>
-              <option value="">Todos los estados</option>
-              <option value="BORRADOR">BORRADOR</option>
-              <option value="ENVIADO">ENVIADO</option>
-              <option value="APROBADO">APROBADO</option>
-              <option value="RECHAZADO">RECHAZADO</option>
-            </select>
-            <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} />
-            <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} />
-            <button className="btn light" onClick={() => { setQ(""); setStatus(""); setDateFrom(""); setDateTo(""); }}>Limpiar</button>
+              <section className="card1 uo-stats">
+                <h2>Métricas</h2>
+                <div className="uo-stats-grid">
+                  <div className="stat">
+
+                    <div className="stat-l">Movimientos:</div>
+                    <div className="stat-n">{history.length}</div>
+                  </div>
+                  <div className="stat">
+
+                    <div className="stat-l">Aprobadas</div>
+                    <div className="stat-n">
+                      {history.filter(h => (h.to_status || "").toUpperCase() === "APROBADO").length}
+                    </div>
+                  </div>
+                  <div className="stat">
+                    <div className="stat-l">Rechazadas</div>
+                    <div className="stat-n">
+                      {history.filter(h => (h.to_status || "").toUpperCase() === "RECHAZADO").length}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+            <div className="ContentHistoryUser">
+              <section className="card2 uo-history">
+                <div className="uo-history-head">
+                  <h2>Historial </h2>
+                  <div className="uo-filters">
+                    <input
+                      placeholder="Buscar por #solicitud, comentario o estado…"
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                    />
+                    <select value={status} onChange={(e)=>setStatus(e.target.value)}>
+                      <option value="">Todos los estados</option>
+                      <option value="BORRADOR">BORRADOR</option>
+                      <option value="ENVIADO">ENVIADO</option>
+                      <option value="APROBADO">APROBADO</option>
+                      <option value="RECHAZADO">RECHAZADO</option>
+                    </select>
+                    <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} />
+                    <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} />
+                    <button className="btn light" onClick={() => { setQ(""); setStatus(""); setDateFrom(""); setDateTo(""); }}>Limpiar</button>
+                  </div>
+                </div>
+
+                {historyFiltered.length === 0 ? (
+                  <div className="empty">Sin resultados.</div>
+                ) : (
+                  <div className="table-wrap">
+                    <div className="contentTable">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th className="header-table"># Solicitud</th>
+                            <th className="header-table">De</th>
+                            <th className="header-table">A</th>
+                            <th className="header-table">Comentario</th>
+                            <th className="header-table">Fecha</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historyFiltered.map((h) => {
+                            const id = h.id;
+                            const appId = h.application_id ?? h.app_id ?? "-";
+                            const from = h.from_status || "—";
+                            const to = h.to_status || "—";
+                            const comment = h.comment || "—";
+                            const ts = new Date(h.changed_at || h.created_at || h.fecha || h.timestamp).toLocaleString();
+                            return (
+                              <tr key={id}>
+                                <td className="info-table">{appId}</td>
+                                <td className="info-table"><span className={`badge s-${String(from).toLowerCase()}`}>{from}</span></td>
+                                <td className="info-table"><span className={`badge s-${String(to).toLowerCase()}`}>{to}</span></td>
+                                <td className="info-table">{comment}</td>
+                                <td className="info-table">{ts}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+            </section>
           </div>
         </div>
-
-        {historyFiltered.length === 0 ? (
-          <div className="empty">Sin resultados.</div>
-        ) : (
-          <div className="uo-table-wrap">
-            <table className="uo-table">
-              <thead>
-                <tr>
-                  <th># Solicitud</th>
-                  <th>De</th>
-                  <th>A</th>
-                  <th>Comentario</th>
-                  <th>Fecha</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historyFiltered.map((h) => {
-                  const id = h.id;
-                  const appId = h.application_id ?? h.app_id ?? "-";
-                  const from = h.from_status || "—";
-                  const to = h.to_status || "—";
-                  const comment = h.comment || "—";
-                  const ts = new Date(h.changed_at || h.created_at || h.fecha || h.timestamp).toLocaleString();
-                  return (
-                    <tr key={id}>
-                      <td>{appId}</td>
-                      <td><span className={`badge s-${String(from).toLowerCase()}`}>{from}</span></td>
-                      <td><span className={`badge s-${String(to).toLowerCase()}`}>{to}</span></td>
-                      <td className="mono">{comment}</td>
-                      <td>{ts}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
     </div>
   );
 }

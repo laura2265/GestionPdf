@@ -2531,3 +2531,12 @@ smartOltRouter.post("/report/pdf-zona/reset", (req, res) => {
   }
   return res.json({ ok: true, message: "Reset zona aplicado", zona, onlyMintic });
 });
+
+//---------------------------------------
+//---------------Reporte por estado-------
+//---------------------------------------
+
+
+smartOltRouter.post("/report/pdf-estado",(rep, res)=>{
+  
+})

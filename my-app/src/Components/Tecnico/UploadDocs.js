@@ -178,7 +178,8 @@ export default function UploadDocs({ applicationId: appIdProp, onSubmitted, volv
   };
 
   return (
-    <div className="p-4 max-w-2xl">
+    <div className="contentForm">
+      <div className="p-4 max-w-2xl ">
       <h2 className="text-xl font-semibold">Adjuntar Documentos — Solicitud #{applicationId}</h2>
 
       <ol className="mt-3 space-y-3">
@@ -253,5 +254,7 @@ export default function UploadDocs({ applicationId: appIdProp, onSubmitted, volv
         </div>
       {msg && <p className="mt-3 text-sm">{msg}</p>}
     </div>
+    </div>
+    
   );
 }

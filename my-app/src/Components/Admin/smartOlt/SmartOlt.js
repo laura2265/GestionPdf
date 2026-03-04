@@ -205,6 +205,9 @@ function SmartOlt() {
               <button onClick={() => navigate("/reporte-zona")}>
                 Reporte por Zona
               </button>
+              <button onClick={() => navigate("/reporte-estado")}>
+                Reporte por Estado
+              </button>
             </div>
           </div>
 

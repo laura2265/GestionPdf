@@ -444,8 +444,9 @@ export default function SupervisorDashboardV3({ classes = {} }) {
   const onPreview = (f) => setPreviewFile(f);
 
   return (
-    <div>
-      <header className="mb-4 flex items-center justify-between">
+    <div className="contentDashboardSuper">
+      <div>
+        <header className="mb-4 flex items-center justify-between">
         <div className="content-dashSuper">
           <h2>Dashboard Supervisor</h2>
         </div>
@@ -654,6 +655,7 @@ export default function SupervisorDashboardV3({ classes = {} }) {
         )}
       </Drawer>
 
+      </div>
     </div>
   );
   

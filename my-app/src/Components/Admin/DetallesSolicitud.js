@@ -145,157 +145,166 @@ export default function DetallesSolicitud({ id: idProp }) {
 
   return (
     <div className="dashboard-container">
-      <header className="dashboard-header">
+      <header className="dashboard-header1">
         <h1 className="dashboard-title">Solicitud #{app.id}</h1>
-        <div className="header-actions">
+        <div className="header-actions1">
           <button className="btn secondary">
             <Link to='/admin'>Volver</Link></button>
         </div>
       </header>
-      
-      <div className="main-grid" style={{ marginTop: 18 }}>
-        <div className="left-grid">
-          <div className="section">
-            <h3 className="section-title">Datos del solicitante</h3>
-            <DataGrid rows={[
-              ["Nombre completo", fullName],
-              ["Documento", first(app.documento, app.dni, app.numero_documento, "-")],
-              ["Email", first(app.email, app.correo, "-")],
-              ["Teléfono", first(app.telefono, app.celular, app.numero_contacto, "-")],
-            ]}/>
-          </div>
 
-          <div className="section">
-            <h3 className="section-title">Dirección</h3>
-            <DataGrid rows={[
-              ["Dirección", first(app.direccion, "-")],
-              ["Barrio", first(app.barrio, "-")],
-              ["UPZ", first(app.UPZ, "-")],
-              ["Estrato", first(app.estrato_id, "-")],
-            ]}/>
-          </div>
+      <div className="ContentInfoSoli">
+        <div className="main-grid1" style={{ marginTop: 18 }}>
+          <div className="main-grid">
+            <div className="left-grid">
+              <div className="contentInfoSoli1">  
+                <div className="section">
+                  <h3 className="section-title">Datos del solicitante</h3>
+                  <DataGrid className="data-grid" rows={[
+                    ["Nombre:", fullName],
+                    ["Documento:", first(app.documento, app.dni, app.numero_documento, "-")],
+                    ["Email:", first(app.email, app.correo, "-")],
+                    ["Teléfono:", first(app.telefono, app.celular, app.numero_contacto, "-")],
+                  ]}/>
+                </div>
 
-          <div className="section" style={{ gridColumn: "1 / -1" }}>
-            <h3 className="section-title">Estado y tiempos</h3>
-            <DataGrid rows={[
-              ["Estado", <span className={badgeClass}>{estado}</span>],
-              ["Creada", fmt(app.created_at)],
-              ["Actualizada", fmt(app.updated_at)],
-              ["Observaciones", first(app.observaciones, app.notes, "—")],
-            ]}/>
-          </div>
+                <div className="section">
+                  <h3 className="section-title">Dirección</h3>
+                  <DataGrid rows={[
+                    ["Dirección:", first(app.direccion, "-")],
+                    ["Barrio:", first(app.barrio, "-")],
+                    ["UPZ:", first(app.UPZ, "-")],
+                    ["Estrato:", first(app.estrato_id, "-")],
+                  ]}/>
+                </div>
+              </div>
 
-          <div className="sectionTable" style={{ gridColumn: "1 / -1" }}>
-              <h3 className="section-title">Historial de PDFs</h3>
-              <div className="table-wrap">
-                <table className="table responsive">
-                  <thead>
-                    <tr><th>Nombre</th><th>Tipo</th><th>Acciones</th></tr>
-                  </thead>
-                  <tbody>
-                    {pdfs.length === 0 ? (
-                      <tr><td colSpan="3" className="muted">Sin PDFs generados</td></tr>
-                    ) : pdfs.map((p) => {
-                      const href = absolutize(p.url);
-                      return (
-                        <tr key={p.id}>
-                          <td data-label="Nombre">{p.name}</td>
-                          <td data-label="Tipo">{p.tipo}</td>
-                          <td className="actions actions-col" data-label="Acciones">
-                          <button
-                            className="btn small"
-                            onClick={() => setPreview({
-                              file_name: p.file_name || p.name,
-                              mime_type: p.mime_type || "application/pdf",
-                              url: p.url || p.storage_path || "", 
-                            })}
-                          >
-                            Ver
-                          </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="section" style={{ gridColumn: "1 / -1" }}>
+                <h3 className="section-title">Estado y tiempos</h3>
+                <DataGrid rows={[
+                  ["Estado:", <span className={badgeClass}>{estado}</span>],
+                  ["Creada:", fmt(app.created_at)],
+                  ["Actualizada:", fmt(app.updated_at)],
+                  ["Observaciones:", first(app.observaciones, app.notes, "—")],
+                ]}/>
               </div>
             </div>
+            <aside className="side-stack">
+              <div className="visorSection">
+                <h3 className="section-title">Visor</h3>
+                {!preview ? (
+                  <div className="muted">Selecciona un archivo o PDF</div>
+                ) : (
+                  <div className="pdf-viewer">
+                    
+                
+                    {String(preview.mime_type || "").startsWith("image/") ? (
+                      <img
+                        alt={preview.file_name}
+                        src={absolutize(preview.url)}
+                        style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                      />
+                    ) : (
+                      (() => {
+                        const isPdf =
+                          String(preview.mime_type || "").toLowerCase() === "application/pdf" ||
+                          String(preview.file_name || "").toLowerCase().endsWith(".pdf");
+                        if (isPdf) {
+                          return (
+                            <iframe className="pdf-frame" src={absolutize(preview.url)} title={preview.file_name} />
+                          );
+                        }
+                        return <p className="mensaje">No hay vista previa disponible.</p>;
+                      })()
+                    )}
+                    <div className="viewer-actions">
+                      <a
+                        className="btn small secondary"
+                        href={absolutize(preview.url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Abrir
+                      </a>
+                    </div>
 
-            <div className="sectionTable" style={{ gridColumn: "1 / -1" }}>
-              <h3 className="section-title">PDFs adjuntos</h3>
-              <div className="table-wrap">
-                <table className="table responsive">
-                  <thead>
-                    <tr><th>Nombre</th><th>Tipo</th><th>Acciones</th></tr>
-                  </thead>
-                  <tbody>
-                    {pdfAdjuntos.map((p) => {
-                      const href = absolutize(p.url);
-                      return (
-                        <tr key={p.id}>
-                          <td data-label="Nombre">{p.file_name}</td>
-                          <td data-label="Tipo">{p.kind || p.mime_type || "application/pdf"}</td>
-                          <td className="actions actions-col" data-label="Acciones">
+                  </div>
+                )}
+              </div>
+            </aside>
+          </div>
+          
+
+          <div className="tableContainer">
+              <div className="sectionTable1" style={{ gridColumn: "1 / -1" }}>
+                <h3 className="section-title">Historial de PDFs</h3>
+                <div className="table-wrap">
+                  <table className="table1 responsive">
+                    <thead>
+                      <tr><th>Nombre</th><th>Tipo</th><th>Acciones</th></tr>
+                    </thead>
+                    <tbody>
+                      {pdfs.length === 0 ? (
+                        <tr><td colSpan="3" className="muted">Sin PDFs generados</td></tr>
+                      ) : pdfs.map((p) => {
+                        const href = absolutize(p.url);
+                        return (
+                          <tr key={p.id} className="ConentDocumentTable">
+                            <td data-label="Nombre">{p.name}</td>
+                            <td data-label="Tipo">{p.tipo}</td>
+                            <td className="actions actions-col" data-label="Acciones">
                             <button
-                              className="btn small secondary"
-                              onClick={() => setPreview(p)}
+                              className="btn small"
+                              onClick={() => setPreview({
+                                file_name: p.file_name || p.name,
+                                mime_type: p.mime_type || "application/pdf",
+                                url: p.url || p.storage_path || "", 
+                              })}
                             >
                               Ver
                             </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                  </tbody>
-                </table>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div >
+                    
+              <div className="sectionTable1" style={{ gridColumn: "1 / -1" }}>
+                <h3 className="section-title">PDFs adjuntos</h3>
+                <div className="table-wrap">
+                      
+                  <table className="table1 responsive">
+                    <thead>
+                      <tr><th>Nombre</th><th>Tipo</th><th>Acciones</th></tr>
+                    </thead>
+                    <tbody>
+                      {pdfAdjuntos.map((p) => {
+                        const href = absolutize(p.url);
+                        return (
+                          <tr key={p.id} className="ConentDocumentTable">
+                            <td data-label="Nombre">{p.file_name}</td>
+                            <td data-label="Tipo">{p.kind || p.mime_type || "application/pdf"}</td>
+                            <td className="actions actions-col" data-label="Acciones">
+                              <button
+                                className="btn small secondary"
+                                onClick={() => setPreview(p)}
+                              >
+                                Ver
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                 })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
+
         </div>
-
-        <aside className="side-stack">
-          <div className="section">
-            <h3 className="section-title">Visor</h3>
-            {!preview ? (
-              <div className="muted">Selecciona un archivo o PDF</div>
-            ) : (
-              <div className="pdf-viewer">
-                <div className="viewer-actions">
-                  <a
-                    className="btn small secondary"
-                    href={absolutize(preview.url)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Abrir
-                  </a>
-                </div>
-            
-                {String(preview.mime_type || "").startsWith("image/") ? (
-                  <img
-                    alt={preview.file_name}
-                    src={absolutize(preview.url)}
-                    style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                  />
-                ) : (
-                  (() => {
-                    const isPdf =
-                      String(preview.mime_type || "").toLowerCase() === "application/pdf" ||
-                      String(preview.file_name || "").toLowerCase().endsWith(".pdf");
-                    if (isPdf) {
-                      return (
-                        <iframe className="pdf-frame" src={absolutize(preview.url)} title={preview.file_name} />
-                      );
-                    }
-                    return <p className="mensaje">No hay vista previa disponible.</p>;
-                  })()
-                )}
-
-              </div>
-            )}
-          </div>
-        </aside>
-
       </div>
     </div>
   );

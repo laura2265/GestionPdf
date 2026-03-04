@@ -141,9 +141,9 @@ export default function ActualizarUser() {
 
   return (
     <div className="dashboard-container">
-      <header className="dashboard-header">
+      <header className="dashboard-header1">
         <h1 className="dashboard-title">Editar Usuario</h1>
-        <div className="header-actions">
+        <div className="header-actions1">
           <button className="btn" onClick={() => navigate(-1)} disabled={saving}>
             Volver
           </button>

@@ -6,7 +6,6 @@ const NORMALIZE = (v) => (v || '').toString().trim().toUpperCase();
 const ESTADOS = ['BORRADOR', 'ENVIADA', 'APROBADA', 'RECHAZADA'];
 
 function MiniLineChart({ data, height = 160, padding = 24 }) {
-
   if (!data || data.length === 0) return <div className="chart-placeholder">Sin datos</div>;
   const width = 560; 
   const maxY = Math.max(1, ...data.map(d => d.value));
@@ -47,15 +46,12 @@ function MiniLineChart({ data, height = 160, padding = 24 }) {
   );
 }
 
-
-
 function DashboardAdmin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [users, setUsers] = useState([]);
   const [appsByUser, setAppsByUser] = useState({});
   const [activityHistory, setActivityHistory] = useState([]);
-
 
   const [q, setQ] = useState("");
 
@@ -89,7 +85,6 @@ function DashboardAdmin() {
       );
     });
   }, [q, allApps]);
-
 
   const fetchAppsForUser = async (idUser) => {
     const res = await fetch('http://localhost:3000/api/applications', {
@@ -218,6 +213,8 @@ useEffect(() => {
   const smartOlt = () =>{
     navigate('/smartolt-admin')
   }
+
+
   return (
   <div className="dashboard-container">
     <header className="dashboard-header">
@@ -245,12 +242,12 @@ useEffect(() => {
     </header>
 
     <div className="main-grid">
-      <div>
+      <div className='contentCards'>
         {/* KPIs */}
         <div className="kpi-row">
           <div className="kpi-card">
             <div className="kpi-dot bg-dark">👤</div>
-            <div>
+            <div className='contentinfocard'>
               <div className="kpi-meta">Usuarios</div>
               <div className="kpi-value">{users.length}</div>
             </div>
@@ -258,7 +255,7 @@ useEffect(() => {
 
           <div className="kpi-card">
             <div className="kpi-dot teal">📄</div>
-            <div>
+            <div className='contentinfocard'>
               <div className="kpi-meta">Solicitudes Totales</div>
               <div className="kpi-value">{globalStats.totalApps}</div>
             </div>
@@ -266,7 +263,7 @@ useEffect(() => {
 
           <div className="kpi-card">
             <div className="kpi-dot pink">✔</div>
-            <div>
+            <div className='contentinfocard'>
               <div className="kpi-meta">Aprobadas</div>
               <div className="kpi-value">{globalStats.APROBADA}</div>
             </div>
@@ -274,7 +271,7 @@ useEffect(() => {
 
           <div className="kpi-card">
             <div className="kpi-dot cyan">↻</div>
-            <div>
+            <div className='contentinfocard'>
               <div className="kpi-meta">Rechazadas</div>
               <div className="kpi-value">{globalStats.RECHAZADA}</div>
             </div>
@@ -284,7 +281,7 @@ useEffect(() => {
         <div className="left-grid" style={{ marginTop: 18 }}>
 
           <div className="sectionTable" style={{ gridColumn: '1 / -1' }}>
-            <h3 className="section-title">Últimas solicitudes</h3>
+            <h3 className="section-title">ÚLTIMAS SOLICITUDES</h3>
             <div className="searchWrap" style={{ marginBottom: "12px" }}>
                 <input
                   type="text"
@@ -300,12 +297,12 @@ useEffect(() => {
                 <table className="table">
                 <thead>
                   <tr>
-                    <th>ID</th>
-                    <th>Solicitante</th>
-                    <th>Documento</th>
-                    <th>Email</th>
-                    <th>Estado</th>
-                    <th>Acciones</th>
+                    <th className="header-table">ID</th>
+                    <th className="header-table">Solicitante</th>
+                    <th className="header-table">Documento</th>
+                    <th className="header-table">Email</th>
+                    <th className="header-table">Estado</th>
+                    <th className="header-table">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -314,11 +311,11 @@ useEffect(() => {
                     const estado = (a.estado || a.status || '-');
                     return (
                       <tr key={a.id}>
-                        <td>{a.id}</td>
-                        <td>{fullName}</td>
-                        <td>{a.numero_documento || a.dni || '-'}</td>
-                        <td>{a.email || a.correo || '-'}</td>
-                        <td>
+                        <td className="info-table"> {a.id}</td>
+                        <td className="info-table"> {fullName}</td>
+                        <td className="info-table"> {a.numero_documento || a.dni || '-'}</td>
+                        <td className="info-table"> {a.email || a.correo || '-'}</td>
+                        <td className="info-table">
                           <span className={
                             'badge ' + (
                               estado.toLowerCase()
@@ -331,8 +328,8 @@ useEffect(() => {
                             {estado}
                           </span>
                         </td>
-                       <td>
-                          <button className="btn small" onClick={() => navigate(`/detalle-admin/${a.id}`)}>Ver</button>
+                       <td className='info-table'>
+                          <button className="btn_small" onClick={() => navigate(`/detalle-admin/${a.id}`)}>Ver</button>
                          </td>
                       </tr>
                     );

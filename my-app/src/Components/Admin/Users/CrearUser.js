@@ -102,9 +102,9 @@ function CrearUser(){
     return(
         <>
             <div className="dashboard-container">
-                <header className="dashboard-header">
+                <header className="dashboard-header1">
                   <h1 className="dashboard-title">Crear Usuario</h1>
-                  <div className='header-actions'>
+                  <div className='header-actions1'>
                     <button
                       className="btn danger"
                       onClick={Volver}

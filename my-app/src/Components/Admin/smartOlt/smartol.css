@@ -660,6 +660,7 @@ td .status-icon {
   display: flex;
   justify-content: center;
   align-items: center;
+  min-height: 590px;
 }
 
 .ContentReporUpz .reportUpz{
@@ -789,4 +790,31 @@ td .status-icon {
 .btnGnerarUpz:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+}
+
+.buttonStatus{
+  display: flex;
+  justify-content: center;
+}
+
+.botonTipoUpz2, .botonTipoUpz2 select {
+  border: 1px solid #333333af;
+  border-radius: 7px;
+   padding: .7rem;
+   color: #333333af;
+   margin: 5px;
+}
+.botonTipoUpz2 option{
+  color: #333;
+  border: 1px solid #333;
+}
+.botonTipoUpz2 option:hover{
+  background-color: tomato;
+  transition: 1s;
+}
+.botonTipoUpz2:has(input:checked),
+.botonTipoUpz2:hover {
+  border-color: #333;
+  background-color: #2563eb20;
+  color: #333;
 }

@@ -116,30 +116,30 @@ export default function AdminUsers() {
         {error && !loading && <div className="alert danger">{error}</div>}
 
         {!loading && !error && (
-          <div className="table-wrap">
+          <div className="table-wrap2">
             <div className="contentTable">
               <table className="table"> 
                 <thead>
                   <tr>
-                    <th>ID</th>
-                    <th>Nombre</th>
-                    <th>E-mail</th>
-                    <th>Teléfono</th>
-                    <th>Acciones</th>
+                    <th className="header-table">ID</th>
+                    <th className="header-table">Nombre</th>
+                    <th className="header-table">E-mail</th>
+                    <th className="header-table">Teléfono</th>
+                    <th className="header-table">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.slice(0, 300).map((a) => (
                     <tr key={a.id || Math.random()}>
-                      <td>{a.id}</td>
-                      <td>{a.full_name}</td>
-                      <td>{a.email}</td>
-                      <td>{a.phone}</td>
-                      <td>
-                        <button className="btn xs" onClick={()=>{navigate(`/listar-user/${a.id}`)}} >Ver</button>
+                      <td className="info-table">{a.id}</td>
+                      <td className="info-table">{a.full_name}</td>
+                      <td className="info-table">{a.email}</td>
+                      <td className="info-table">{a.phone}</td>
+                      <td className="info-table">
+                        <button className="btn_small" onClick={()=>{navigate(`/listar-user/${a.id}`)}} >Ver</button>
                       </td>
                       <td>
-                        <button className="btn xs" onClick={()=>{navigate(`/actualizar-user/${a.id}`)}} >Actualizar</button>
+                        <button className="btn_small" onClick={()=>{navigate(`/actualizar-user/${a.id}`)}} >Actualizar</button>
                       </td>
                     </tr> 
                   ))}
