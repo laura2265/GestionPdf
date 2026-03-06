@@ -1,8 +1,12 @@
 import * as client from "./smartOlt.client.js"
 import { renderPdf } from "../../utils/SmartOlt/pdfEngine.js"
 import { esc, norm } from "../../utils/SmartOlt/normalize.js"
-import { commentText, isMintic, upzOf } from "../../utils/SmartOlt/filters.js"
+import { commentText, isMintic, upzOf,uniqueExternalIds, getExternalId, dateOf, metaOf, zonaOf, isMinticGrp1, isMinticGrp2 } from "../../utils/SmartOlt/filters.js"
 import { HttpError, isSmartOltHourlyLimit } from "./smartOlt.client.js"
+import { createRun, getRun, getExportedSet, markExported } from "../../utils/SmartOlt/runStore.js"
+import { number, unknown } from "zod"
+import { mapLimit, sleep } from "../../utils/SmartOlt/concurrency.js"
+import { from } from "puppeteer-core/lib/cjs/third_party/rxjs/rxjs.js"
 
 type GenerarPdfOpts={
     refresh?: boolean;
@@ -17,11 +21,19 @@ function chuck <T>(arr: T[], size: number){
 }
 
 function bucketStatus(s:any){
-    const v = norm(s);
-    if(v === "online") return "online";
-    if(v === "los") return "los";
-    if(v === "Power fail") return "Power failed";
-    return "unknown" 
+    const v = norm(s); 
+
+    if (v === "online") return "online";
+    if (v === "los") return "los";
+
+    // power failed: cubre variantes comunes
+    if (
+      v === "power_failed" ||
+      v === "power failed" ||
+      v.includes("power") && v.includes("fail")
+    ) return "power_failed";
+
+    return "unknown";
 }
 
 export async function generateGeneralMinticPdf(opts: GenerarPdfOpts={}) {
@@ -41,8 +53,8 @@ export async function generateGeneralMinticPdf(opts: GenerarPdfOpts={}) {
 
     const minticOnus = onus.filter(isMintic);
 
-    const counts = {total: minticOnus.length, online: 0, los: 0, power_failed: 0, unknow: 0}
-    for(const o of minticOnus)(counts as any)[bucketStatus(o?.status)]++;
+    const counts = { total: minticOnus.length, online: 0, los: 0, power_failed: 0, unknown: 0 };
+    for (const o of minticOnus) counts[bucketStatus(o?.status)]++;
 
     const q = norm(opts.q ?? "");
     const statusQ = norm (opts.status ?? "");
@@ -71,7 +83,7 @@ export async function generateGeneralMinticPdf(opts: GenerarPdfOpts={}) {
         const pill = 
             s === "online" ? "online":
             s === "los" ? "los":
-            s === "power failed" ? "power" : "unk";
+            s === "Power fail" ? "power" : "unk";
 
         const sp = o?.service_ports?.[0];
         const onuPost = `${o?.board ?? ""}/${o?.port??""}/${o?.onu??""}`;
@@ -89,7 +101,7 @@ export async function generateGeneralMinticPdf(opts: GenerarPdfOpts={}) {
                 <td>${esc(o?.onu_signal_value ?? o?.signal_1310 ?? "-")}</td>
                 <td>${esc(o?.authorization_date ?? "-")}</td>
                 <td>${esc(commentText(o) || "-")}</td>
-                <td>${upzOf(o)==="lucero"?"tesoro": upzOf(o) === "tesoro" ? "Tesoro": "Otras"}</td>
+                <td>${upzOf(o)==="lucero"?"Lucero": upzOf(o) === "tesoro" ? "Tesoro": "Otras"}</td>
             </tr>
         `
     };
@@ -176,7 +188,7 @@ export async function generateGeneralMinticPdf(opts: GenerarPdfOpts={}) {
                   <div class="card ok"><div>Online</div><b>${counts.online}</b></div>
                   <div class="card los"><div>LOS</div><b>${counts.los}</b></div>
                   <div class="card pf"><div>Power Failed</div><b>${counts.power_failed}</b></div>
-                  <div class="card unk"><div>Unknown</div><b>${counts.unknow}</b></div>
+                  <div class="card unk"><div>Offline</div><b>${counts.unknown}</b></div>
                 </div>
 
                 <div class="table-wrap">
@@ -205,3 +217,1317 @@ export async function generateGeneralMinticPdf(opts: GenerarPdfOpts={}) {
         counts
     }
  }
+
+ export function PorIdReport(){
+ }
+
+ //-------------------Reporte por id---------------------- 
+
+function titleCase(s: string) {
+  return String(s ?? "")
+    .toLowerCase()
+    .replace(/\b\w/g, (l) => l.toUpperCase());
+}
+
+function splitTwoSmart(word: string) {
+  const w = String(word ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!w) return [];
+  if (w.length <= 6) return [w];
+
+  const minPart = 3;
+  const mid = Math.floor(w.length / 2);
+
+  const candidates: number[] = [];
+  for (let i = mid - 2; i <= mid + 2; i++) {
+    if (i >= minPart && w.length - i >= minPart) candidates.push(i);
+  }
+
+  const cut = candidates.length ? candidates[0] : mid;
+  return [w.slice(0, cut), w.slice(cut)];
+}
+
+function humanizeService(service: string) {
+  const raw = String(service ?? "").trim();
+  if (!raw) return "";
+
+  const parts = raw
+    .split(".")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const words = parts.flatMap((p) => splitTwoSmart(p));
+  return titleCase(words.join(" "));
+}
+
+function upzLabel(o: any) {
+  const u = upzOf(o);
+  if (u === "lucero") return "Lucero";
+  if (u === "tesoro") return "Tesoro";
+  return "Otras";
+}
+
+function renderGraph(title: string, img: any) {
+  if (img?.ok && img?.dataUrl) {
+    return `
+      <div class="gcard">
+        <div class="gt">${esc(title)}</div>
+        <div class="imgwrap"><img src="${img.dataUrl}" /></div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="gcard">
+      <div class="gt">${esc(title)}</div>
+      <div class="gempty">${esc(img?.text ?? "Sin datos / Sin imagen")}</div>
+    </div>
+  `;
+}
+
+export async function generateOnuPdf(id: string, opts: { refresh?: boolean } = {}) {
+  const refresh = opts.refresh ?? false;
+
+  const detailsR = await client.getOnuDetails(id, { refresh });
+
+  if (!detailsR.ok) {
+    const data = (detailsR as any).data;
+    if (isSmartOltHourlyLimit(data)) {
+      throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", data);
+    }
+    throw new HttpError((detailsR as any).status ?? 503, "Error consultando SmartOLT (get_onu_details).", data);
+  }
+
+  const onu = (detailsR as any).data?.onu_details ?? null;
+  if (!onu) {
+    throw new HttpError(404, "ONU no encontrada");
+  }
+
+  const signal = await client.getOnuSignalGraphDataUrl(id, "monthly");
+  const trafico = await client.getOnuTrafficGraphDataUrl(id, "monthly");
+
+  const serviceUser = String(onu?.name ?? id).trim();
+  const fullName = humanizeService(serviceUser);
+  const upz = upzLabel(onu);
+
+  const estado = onu?.status ?? "-";
+  const olt = onu?.olt_name ?? onu?.olt_id ?? "-";
+  const zona = onu?.zone_name ?? "-";
+  const comentario = commentText(onu) || "-";
+
+  const catvRaw = String(onu?.catv ?? "").trim();
+  const tv =
+    norm(catvRaw) === "enabled"
+      ? "Sí (CATV Enabled)"
+      : norm(catvRaw) === "disabled"
+      ? "No (CATV Disabled)"
+      : catvRaw
+      ? `- (${catvRaw})`
+      : "-";
+
+  const now = new Date();
+
+  const html = `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Reporte ONU - ${esc(fullName)}</title>
+        <style>
+          *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+          body{ margin:0; color:#111; }
+          .page{ padding:12mm; }
+          .header{ border:1px solid #e5e7eb; border-radius:16px; padding:10px 12px; margin-bottom:10px; }
+          .hTop{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+          .title{ margin:0; font-size:18px; font-weight:900; line-height:1.15; }
+          .subtitle{ margin-top:4px; font-size:12px; color:#444; }
+          .meta{ font-size:11px; color:#666; text-align:right; white-space:nowrap; }
+          .badge{ display:inline-block; margin-top:6px; font-size:11px; padding:4px 10px; border-radius:999px; border:1px solid #ddd; font-weight:800; }
+          .infoGrid{ margin-top:10px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+          .card{ border:1px solid #e5e7eb; border-radius:14px; padding:10px 12px; min-height:96px; }
+          .row{ display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px dashed #eee; font-size:12px; }
+          .row:last-child{ border-bottom:0; }
+          .k{ color:#666; }
+          .v{ font-weight:900; color:#111; text-align:right; }
+          .graphs{ margin-top:10px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+          .gcard{ border:1px solid #e5e7eb; border-radius:14px; padding:10px; page-break-inside: avoid; }
+          .gt{ font-size:13px; font-weight:900; margin-bottom:8px; }
+          .imgwrap{ border:1px solid #e5e7eb; border-radius:12px; padding:8px; background:#fff; }
+          img{ width:100%; height:auto; display:block; max-height:320px; object-fit:contain; }
+          .gempty{
+            min-height:260px; display:flex; align-items:center; justify-content:center;
+            text-align:center; font-size:12px; color:#666; border:1px dashed #ddd;
+            border-radius:12px; padding:14px; background:#fafafa;
+          }
+          .foot{ margin-top:10px; font-size:10px; color:#666; }
+        </style>
+      </head>
+      <body>
+        <section class="page">
+          <div class="header">
+            <div class="hTop">
+              <div>
+                <h1 class="title">UPZ ${esc(upz)} — ${esc(fullName)}</h1>
+                <div class="subtitle">Servicio: <b>${esc(serviceUser)}</b> &nbsp;|&nbsp; External ID: <b>${esc(id)}</b></div>
+                <span class="badge">Estado: ${esc(estado)}</span>
+              </div>
+
+              <div class="meta">
+                Generado: <b>${esc(now.toLocaleString())}</b><br/>
+                Fuente: <b>${esc((detailsR as any).fromCache ? "Cache" : "Live")}</b>
+                ${(detailsR as any).cachedAt ? `<br/>CacheAt: ${esc(new Date((detailsR as any).cachedAt).toLocaleString())}` : ""}
+              </div>
+            </div>
+
+            <div class="infoGrid">
+              <div class="card">
+                ${[
+                  ["OLT", olt],
+                  ["Zona", zona],
+                  ["TV", tv],
+                ]
+                  .map(
+                    ([k, v]) =>
+                      `<div class="row"><div class="k">${esc(k)}</div><div class="v">${esc((v as any) ?? "-")}</div></div>`
+                  )
+                  .join("")}
+              </div>
+
+              <div class="card">
+                <div class="row">
+                  <div class="k">Comentario</div>
+                  <div class="v" style="max-width:420px; text-align:right; word-break:break-word;">
+                    ${esc(comentario)}
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="k">Fecha reporte</div>
+                  <div class="v">${esc(now.toLocaleString())}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="graphs">
+            ${renderGraph("Señal (monthly)", signal)}
+            ${renderGraph("Tráfico (monthly)", trafico)}
+          </div>
+
+          <div class="foot">
+            Nota: si aparece “Sin datos / Sin imagen”, SmartOLT pudo devolver vacío o estar limitado.
+          </div>
+        </section>
+      </body>
+    </html>
+  `;
+
+  const pdf = await renderPdf(html, {
+    landscape: true,
+    format: "A4",
+    margin: { top: "8mm", right: "8mm", bottom: "8mm", left: "8mm" },
+  });
+
+  return {
+    pdf,
+    filename: `reporte-onu-${id}.pdf`,
+    meta: {
+      fromCache: (detailsR as any).fromCache,
+      cachedAt: (detailsR as any).cachedAt ?? null,
+    },
+  };
+}
+
+//------------------------Reporte po UPZ-------------
+
+type UpzKey = "lucero" | "tesoro";
+
+function upzTitle(upz: UpzKey) {
+  return upz === "lucero" ? "Lucero" : "Tesoro";
+}
+
+function runKeyOf(upz: UpzKey, onlyMintic: boolean) {
+  return `upz:${upz}:${onlyMintic ? "mintic" : "all"}`;
+}
+
+function pillClass(status: any) {
+  const s = norm(status);
+  if (s === "online") return "online";
+  if (s === "los") return "los";
+  if (s === "power failed" || s === "power_failed" || (s.includes("power") && s.includes("fail"))) return "pf";
+  return "unk";
+}
+
+function renderGraphBox(title: string, img: any) {
+  if (img?.ok && img?.dataUrl) {
+    return `
+      <div class="g">
+        <div class="gt">${esc(title)}</div>
+        <img src="${img.dataUrl}" />
+      </div>
+    `;
+  }
+
+  return `
+    <div class="g">
+      <div class="gt">${esc(title)}</div>
+      <div class="gempty">${esc(img?.text ?? "Sin imagen")}</div>
+    </div>
+  `;
+}
+
+function chunk<T>(arr: T[], n: number) {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+}
+
+export async function createUpzCardsRun(opts: {
+  upz: UpzKey;
+  refresh?: boolean;
+  onlyMintic?: boolean;
+}) {
+  const { upz, refresh = false, onlyMintic = true } = opts;
+
+  const r = await client.getAllOnusDetails({ refresh });
+
+  if (!r.ok) {
+    const data = (r as any).data;
+    if (isSmartOltHourlyLimit(data)) {
+      throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", data);
+    }
+    throw new HttpError((r as any).status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", data);
+  }
+
+  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
+
+  let filtered = onus
+    .filter((o: any) => (onlyMintic ? isMintic(o) : true))
+    .filter((o: any) => upzOf(o) === upz);
+
+  if (!filtered.length) {
+    throw new HttpError(404, `No hay ONUs para UPZ ${upz}${onlyMintic ? " (mintic=true)" : ""}`);
+  }
+
+  filtered.sort((a: any, b: any) => {
+    const da = dateOf(a)?.getTime();
+    const db = dateOf(b)?.getTime();
+    if (da == null && db == null) return 0;
+    if (da == null) return 1;
+    if (db == null) return -1;
+    return da - db;
+  });
+
+  let ids = filtered
+    .map((o: any) => getExternalId(o))
+    .filter((x): x is string => Boolean(x));
+
+  const seen = new Set<string>();
+  ids = ids.filter((id) => (seen.has(id) ? false : (seen.add(id), true)));
+
+  const key = runKeyOf(upz, onlyMintic);
+
+  const exported = getExportedSet(key);
+  ids = ids.filter((id) => !exported.has(id));
+
+  if (!ids.length) {
+    throw new HttpError(
+      404,
+      `No hay ONUs nuevas para UPZ ${upz}${onlyMintic ? " (mintic=true)" : ""}. Probablemente ya descargaste todo.`
+    );
+  }
+
+  const run = createRun("upz", key, ids, 2 * 60 * 60 * 1000);
+
+  return {
+    runId: run.runId,
+    upz,
+    onlyMintic,
+    total: ids.length,
+    expiresInMinutes: 120,
+  };
+}
+
+export async function exportUpzCardsRun(opts: {
+  upz: UpzKey;
+  runId: string;
+  batch?: number;
+  size?: number;
+  refresh?: boolean;
+}) {
+  const { upz, runId, batch = 0, size = 100, refresh = false } = opts;
+
+  const run = getRun(runId);
+  if (!run) {
+    throw new HttpError(400, "runId inválido o expirado");
+  }
+
+  if (run.type !== "upz") {
+    throw new HttpError(400, "El run no corresponde a tipo UPZ");
+  }
+
+  const expectedPrefix = `upz:${upz}:`;
+  if (!run.key.startsWith(expectedPrefix)) {
+    throw new HttpError(400, "runId no corresponde a esa UPZ");
+  }
+
+  const total = run.ids.length;
+  const start = batch * size;
+  const end = start + size;
+  const idsBatch = run.ids.slice(start, end);
+
+  if (!idsBatch.length) {
+    throw new HttpError(404, "Lote vacío (probablemente ya descargaste todo)");
+  }
+
+  const r = await client.getAllOnusDetails({ refresh });
+  if (!r.ok) {
+    const data = (r as any).data;
+    if (isSmartOltHourlyLimit(data)) {
+      throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", data);
+    }
+    throw new HttpError((r as any).status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", data);
+  }
+
+  const allOnus = Array.isArray((r as any).onus) ? (r as any).onus : [];
+
+  const byId = new Map<string, any>();
+  for (const o of allOnus) {
+    const id = getExternalId(o);
+    if (id) byId.set(id, o);
+  }
+
+  const list = idsBatch.map((id) => byId.get(id)).filter(Boolean);
+
+  type Job = { kind: "signal" | "trafico"; id: string };
+  const jobs: Job[] = [];
+
+  for (const o of list) {
+    const id = getExternalId(o);
+    if (!id) continue;
+    jobs.push({ kind: "signal", id });
+    jobs.push({ kind: "trafico", id });
+  }
+
+  const graphMap = new Map<string, { signal?: any; trafico?: any }>();
+  let smartOltLimitReached = false;
+
+  await mapLimit(jobs, 2, async (job) => {
+    if (smartOltLimitReached) return;
+
+    await sleep(120);
+
+    try {
+      const img =
+        job.kind === "signal"
+          ? await client.getOnuSignalGraphDataUrl(job.id, "monthly")
+          : await client.getOnuTrafficGraphDataUrl(job.id, "monthly");
+
+      const raw = JSON.stringify(img ?? {}).toLowerCase();
+      if (raw.includes("hourly limit")) {
+        smartOltLimitReached = true;
+        return;
+      }
+
+      const prev = graphMap.get(job.id) || {};
+      if (job.kind === "signal") prev.signal = img;
+      else prev.trafico = img;
+      graphMap.set(job.id, prev);
+    } catch (err: any) {
+      const txt = String(err?.message ?? err).toLowerCase();
+      if (txt.includes("hourly limit")) {
+        smartOltLimitReached = true;
+        return;
+      }
+      throw err;
+    }
+  });
+
+  if (smartOltLimitReached) {
+    throw new HttpError(
+      429,
+      "Se activó el límite de consultas de SmartOLT (hourly limit). No se generó el reporte."
+    );
+  }
+
+  const pages = chunk(list, 4);
+  const now = new Date();
+
+  const renderCard = (o: any) => {
+    const onuId = getExternalId(o) ?? "-";
+    const gm = graphMap.get(onuId) || {};
+
+    return `
+      <div class="card">
+        <div class="head">
+          <div class="left">
+            <div class="name">${esc(o?.name ?? onuId)}</div>
+            <div class="sub">
+              <span class="pill ${pillClass(o?.status)}">${esc(o?.status ?? "-")}</span>
+              <span class="muted">OLT:</span> <b>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</b>
+              <span class="muted">CATV:</span> <b>${esc(o?.catv ?? "-")}</b>
+            </div>
+            <div class="comment"><span class="muted">Comentario:</span> ${esc(commentText(o) || "-")}</div>
+            <div class="comment"><span class="muted">Fecha autorización:</span> ${esc(o?.authorization_date ?? "-")}</div>
+          </div>
+
+          <div class="right">
+            <div class="muted">External ID</div>
+            <div class="idv">${esc(onuId)}</div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          ${renderGraphBox("Señal (monthly)", gm.signal)}
+          ${renderGraphBox("Tráfico (monthly)", gm.trafico)}
+        </div>
+      </div>
+    `;
+  };
+
+  const renderPage = (items: any[]) => `
+    <section class="page">
+      <div class="pageHead">
+        <h1>Reporte UPZ ${esc(upzTitle(upz))} | Lote: ${esc(batch)}</h1>
+        <div class="meta">
+          Generado: ${esc(now.toLocaleString())}
+          | ONUs en RUN: ${esc(total)}
+          | Rango: ${esc(start)}-${esc(Math.min(end - 1, total - 1))}
+        </div>
+      </div>
+
+      <div class="cards">
+        ${items.map(renderCard).join("")}
+      </div>
+    </section>
+  `;
+
+  const html = `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Reporte UPZ ${esc(upzTitle(upz))}</title>
+        <style>
+          *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+          body{ margin:0; color:#111; }
+          .page{ padding:10mm; page-break-after: always; }
+          .page:last-child{ page-break-after: auto; }
+
+          .pageHead{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; }
+          h1{ margin:0; font-size:16px; }
+          .meta{ font-size:10px; color:#555; }
+
+          .cards{ display:flex; flex-direction:column; gap:8px; }
+
+          .card{
+            border:1px solid #e5e7eb;
+            border-radius:12px;
+            padding:8px;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+
+          .head{ display:flex; justify-content:space-between; gap:10px; }
+          .name{ font-size:12px; font-weight:800; }
+          .sub{ margin-top:2px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+          .comment{ margin-top:4px; font-size:10px; color:#111; }
+          .muted{ color:#666; font-size:10px; }
+
+          .right{ min-width:180px; text-align:right; }
+          .idv{ font-weight:800; font-size:10px; word-break:break-all; }
+
+          .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:9px; border:1px solid #ddd; }
+          .pill.online{ border-color:#2ecc71; color:#2ecc71; }
+          .pill.los{ border-color:#e74c3c; color:#e74c3c; }
+          .pill.pf{ border-color:#f1c40f; color:#f1c40f; }
+          .pill.unk{ border-color:#7f8c8d; color:#7f8c8d; }
+
+          .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+          .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
+          .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
+
+          img{ width:100%; height:auto; display:block; max-height:220px; object-fit:contain; }
+
+          .gempty{
+            min-height:170px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            text-align:center;
+            font-size:9px;
+            color:#666;
+            border:1px dashed #ddd;
+            border-radius:8px;
+            padding:8px;
+            background:#fafafa;
+          }
+        </style>
+      </head>
+      <body>
+        ${pages.map(renderPage).join("")}
+      </body>
+    </html>
+  `;
+
+  const pdf = await renderPdf(html, {
+    landscape: true,
+    format: "A4",
+    margin: { top: "8mm", right: "8mm", bottom: "8mm", left: "8mm" },
+  });
+
+  markExported(run.key, idsBatch);
+
+  return {
+    pdf,
+    filename: `reporte-upz-${upz}-batch-${batch}.pdf`,
+    total,
+    batch,
+    size,
+    exportedNow: idsBatch.length,
+    remaining: Math.max(0, total - end),
+  };
+}
+export async function resetUpzCardsRun(opts: {
+  upz: UpzKey;
+  onlyMintic?: boolean;
+}) {
+  const { upz, onlyMintic = true } = opts;
+  const key = runKeyOf(upz, onlyMintic);
+
+  getExportedSet(key).clear();
+
+  return {
+    ok: true,
+    upz,
+    onlyMintic,
+    message: "Reset UPZ aplicado",
+  };
+}
+
+//-------------------Reporte po meta y upz-----------
+
+type MetaKey = "m1" | "m2" | "m3";
+type MetaOrAll = MetaKey | "all";
+
+function upzMetaRunKey(upz: UpzKey, meta: MetaOrAll, onlyMintic: boolean) {
+  return `upzmeta:${upz}:${meta}:${onlyMintic ? "mintic" : "all"}`;
+}
+
+
+function parseDateStart(v?: string) {
+  if (!v) return null;
+  const d = new Date(`${v}T00:00:00`);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+function parseDateEnd(v?: string) {
+  if (!v) return null;
+  const d = new Date(`${v}T23:59:59`);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+function formatDateLocal(d?: Date | null) {
+  if (!d) return "N/A";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export async function createUpzMetaRun(opts: {
+  upz: UpzKey;
+  meta: MetaOrAll;
+  onlyMintic?: boolean;
+  from?: string;
+  to?: string;
+  refresh?: boolean;
+}) {
+  const {
+    upz,
+    meta,
+    onlyMintic = true,
+    from,
+    to,
+    refresh = false,
+  } = opts;
+
+  const fromD = parseDateStart(from);
+  const toD = parseDateEnd(to);
+
+  const r = await client.getAllOnusDetails({ refresh });
+
+  if (!r.ok) {
+    const data = (r as any).data;
+    if (isSmartOltHourlyLimit(data)) {
+      throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", data);
+    }
+    throw new HttpError((r as any).status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", data);
+  }
+
+  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
+
+  const filtered = onus
+    .filter((o: any) => (onlyMintic ? isMintic(o) : true))
+    .filter((o: any) => upzOf(o) === upz)
+    .filter((o: any) => (meta === "all" ? true : metaOf(o) === meta))
+    .filter((o: any) => {
+      if (!fromD && !toD) return true;
+      const d = dateOf(o);
+      if (!d) return false;
+      if (fromD && d < fromD) return false;
+      if (toD && d > toD) return false;
+      return true;
+    });
+
+  filtered.sort((a: any, b: any) => {
+    const da = dateOf(a)?.getTime();
+    const db = dateOf(b)?.getTime();
+    if (da == null && db == null) return 0;
+    if (da == null) return 1;
+    if (db == null) return -1;
+    return da - db;
+  });
+
+  if (!filtered.length) {
+    throw new HttpError(
+      404,
+      `No hay ONUs para UPZ ${upz} meta=${meta}${onlyMintic ? " mintic=true" : ""}`
+    );
+  }
+
+  const key = upzMetaRunKey(upz, meta, onlyMintic);
+  const exported = getExportedSet(key);
+
+  let ids = filtered
+    .map((o: any) => getExternalId(o))
+    .filter((x): x is string => Boolean(x));
+
+  ids = Array.from(new Set(ids));
+  ids = ids.filter((id) => !exported.has(id));
+
+  if (!ids.length) {
+    throw new HttpError(
+      404,
+      `No hay ONUs nuevas para UPZ ${upz} meta=${meta}${onlyMintic ? " mintic=true" : ""}. Probablemente ya descargaste todo.`
+    );
+  }
+
+  const dates = filtered
+    .map((o: any) => dateOf(o))
+    .filter((d): d is Date => d !== null);
+
+  const authFrom = dates.length
+    ? new Date(Math.min(...dates.map((d) => d.getTime())))
+    : null;
+
+  const authTo = dates.length
+    ? new Date(Math.max(...dates.map((d) => d.getTime())))
+    : null;
+
+  const run = createRun("upzMeta", key, ids, 2 * 60 * 60 * 1000);
+
+  return {
+    runId: run.runId,
+    upz,
+    meta,
+    onlyMintic,
+    total: ids.length,
+    authorizationFrom: authFrom,
+    authorizationTo: authTo,
+    expiresInMinutes: 120,
+    createdAt: new Date(),
+  };
+}
+
+export async function exportUpzMetaRun(opts: {
+  upz: UpzKey;
+  runId: string;
+  batch?: number;
+  size?: number;
+  refresh?: boolean;
+}) {
+  const { upz, runId, batch = 0, size = 100, refresh = false } = opts;
+
+  const run = getRun(runId);
+  if (!run) {
+    throw new HttpError(400, "runId inválido o expirado");
+  }
+
+  if (run.type !== "upzMeta") {
+    throw new HttpError(400, "El run no corresponde a tipo UPZ+META");
+  }
+
+  if (!run.key.startsWith(`upzmeta:${upz}:`)) {
+    throw new HttpError(400, "runId no corresponde a esa UPZ");
+  }
+
+  const total = run.ids.length;
+  const start = batch * size;
+  const end = start + size;
+  const idsBatch = run.ids.slice(start, end);
+
+  if (!idsBatch.length) {
+    throw new HttpError(404, "Lote vacío (probablemente ya descargaste todo)");
+  }
+
+  const exported = getExportedSet(run.key);
+  idsBatch.forEach((id) => exported.add(id));
+
+  const r = await client.getAllOnusDetails({ refresh });
+  if (!r.ok) {
+    const data = (r as any).data;
+    if (isSmartOltHourlyLimit(data)) {
+      throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", data);
+    }
+    throw new HttpError((r as any).status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", data);
+  }
+
+  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
+
+  const byId = new Map<string, any>();
+  for (const o of onus) {
+    const id = getExternalId(o);
+    if (id) byId.set(id, o);
+  }
+
+  const list = idsBatch.map((id) => byId.get(id)).filter(Boolean);
+
+  type Job = { kind: "signal" | "trafico"; id: string };
+  const jobs: Job[] = [];
+
+  for (const o of list) {
+    const id = getExternalId(o);
+    if (!id) continue;
+    jobs.push({ kind: "signal", id });
+    jobs.push({ kind: "trafico", id });
+  }
+
+  const graphMap = new Map<string, { signal?: any; trafico?: any }>();
+  let smartOltLimitReached = false;
+
+  await mapLimit(jobs, 2, async (job) => {
+    if (smartOltLimitReached) return;
+
+    await sleep(120);
+
+    try {
+      const img =
+        job.kind === "signal"
+          ? await client.getOnuSignalGraphDataUrl(job.id, "monthly")
+          : await client.getOnuTrafficGraphDataUrl(job.id, "monthly");
+
+      const raw = JSON.stringify(img ?? {}).toLowerCase();
+      if (raw.includes("hourly limit")) {
+        smartOltLimitReached = true;
+        return;
+      }
+
+      const prev = graphMap.get(job.id) || {};
+      if (job.kind === "signal") prev.signal = img;
+      else prev.trafico = img;
+      graphMap.set(job.id, prev);
+    } catch (err: any) {
+      const txt = String(err?.message ?? err).toLowerCase();
+      if (txt.includes("hourly limit")) {
+        smartOltLimitReached = true;
+        return;
+      }
+      throw err;
+    }
+  });
+
+  if (smartOltLimitReached) {
+    throw new HttpError(
+      429,
+      "Se activó el límite de consultas de SmartOLT (hourly limit). No se generó el reporte."
+    );
+  }
+
+  const pages = chunk(list, 4);
+  const now = new Date();
+
+  const parts = run.key.split(":");
+  const runUpz = parts[1] as UpzKey;
+  const runMeta = parts[2] as MetaOrAll;
+
+  const renderCard = (o: any) => {
+    const onuId = getExternalId(o) ?? "-";
+    const gm = graphMap.get(onuId) || {};
+
+    return `
+      <div class="card">
+        <div class="head">
+          <div class="left">
+            <div class="name">${esc(o?.name ?? onuId)}</div>
+            <div class="sub">
+              <span class="pill ${pillClass(o?.status)}">${esc(o?.status ?? "-")}</span>
+              <span class="muted">OLT:</span> <b>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</b>
+              <span class="muted">CATV:</span> <b>${esc(o?.catv ?? "-")}</b>
+            </div>
+            <div class="comment"><span class="muted">Comentario:</span> ${esc(commentText(o) || "-")}</div>
+            <div class="comment"><span class="muted">Fecha autorización:</span> ${esc(o?.authorization_date ?? "-")}</div>
+          </div>
+
+          <div class="right">
+            <div class="muted">External ID</div>
+            <div class="idv">${esc(onuId)}</div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          ${renderGraphBox("Señal (monthly)", gm.signal)}
+          ${renderGraphBox("Tráfico (monthly)", gm.trafico)}
+        </div>
+      </div>
+    `;
+  };
+
+  const renderPage = (items: any[]) => `
+    <section class="page">
+      <div class="pageHead">
+        <h1>
+          Reporte UPZ ${esc(upzLabel(runUpz))} | Meta: ${esc(String(runMeta).toUpperCase())}
+          <br/>
+          Rango de autorización: ${formatDateLocal(dateOf(list[0]))} → ${formatDateLocal(dateOf(list[list.length - 1]))}
+        </h1>
+        <div class="meta">
+          Generado: ${esc(now.toLocaleString())}
+          | Total ONUs: ${esc(total)}
+          | Rango: ${esc(start)}-${esc(Math.min(end - 1, total - 1))}
+        </div>
+      </div>
+
+      <div class="cards">
+        ${items.map(renderCard).join("")}
+      </div>
+    </section>
+  `;
+
+  const html = `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Reporte UPZ ${esc(upzLabel(runUpz))} - Meta ${esc(String(runMeta).toUpperCase())}</title>
+        <style>
+          *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+          body{ margin:0; color:#111; }
+          .page{ padding:10mm; page-break-after: always; }
+          .page:last-child{ page-break-after: auto; }
+          .pageHead{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; }
+          h1{ margin:0; font-size:16px; }
+          .meta{ font-size:10px; color:#555; }
+          .cards{ display:flex; flex-direction:column; gap:8px; }
+          .card{ border:1px solid #e5e7eb; border-radius:12px; padding:8px; page-break-inside: avoid; break-inside: avoid; }
+          .head{ display:flex; justify-content:space-between; gap:10px; }
+          .name{ font-size:12px; font-weight:800; }
+          .sub{ margin-top:2px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+          .comment{ margin-top:4px; font-size:10px; color:#111; }
+          .muted{ color:#666; font-size:10px; }
+          .right{ min-width:180px; text-align:right; }
+          .idv{ font-weight:800; font-size:10px; word-break:break-all; }
+          .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:9px; border:1px solid #ddd; }
+          .pill.online{ border-color:#2ecc71; color:#2ecc71; }
+          .pill.los{ border-color:#e74c3c; color:#e74c3c; }
+          .pill.pf{ border-color:#f1c40f; color:#f1c40f; }
+          .pill.unk{ border-color:#7f8c8d; color:#7f8c8d; }
+          .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+          .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
+          .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
+          img{ width:100%; height:auto; display:block; max-height:220px; object-fit:contain; }
+          .gempty{
+            min-height:170px;
+            display:flex; align-items:center; justify-content:center;
+            text-align:center; font-size:9px; color:#666;
+            border:1px dashed #ddd; border-radius:8px; padding:8px; background:#fafafa;
+          }
+        </style>
+      </head>
+      <body>
+        ${pages.map(renderPage).join("")}
+      </body>
+    </html>
+  `;
+
+  const pdf = await renderPdf(html, {
+    format: "A4",
+    landscape: true,
+    margin: { top: "6mm", right: "6mm", bottom: "6mm", left: "6mm" },
+  });
+
+  return {
+    pdf,
+    filename: `reporte-upz-${runUpz}-meta-${runMeta}-batch-${batch}.pdf`,
+  };
+}
+
+export async function resetUpzMetaRun(opts: {
+  upz: UpzKey;
+  meta: MetaKey;
+  onlyMintic?: boolean;
+}) {
+  const { upz, meta, onlyMintic = true } = opts;
+  const key = upzMetaRunKey(upz, meta, onlyMintic);
+  getExportedSet(key).clear();
+
+  return {
+    ok: true,
+    message: "Reset aplicado",
+    upz,
+    meta,
+    onlyMintic,
+  };
+}
+
+
+//------------------------Reporte po zonas----------
+function zonaRunKey(zona: string, onlyMintic: boolean) {
+  return `zona:${String(zona).trim().toLowerCase()}:${onlyMintic ? "mintic" : "all"}`;
+}
+
+
+function upzLabelFromFilters(o: any) {
+  const u = upzOf(o);
+  if (u === "lucero") return "Lucero";
+  if (u === "tesoro") return "Tesoro";
+  return "Otras";
+}
+
+
+
+export async function createZonaRun(opts: {
+  zona: string;
+  onlyMintic?: boolean;
+  refresh?: boolean;
+}) {
+  const {
+    zona,
+    onlyMintic = true,
+    refresh = false,
+  } = opts;
+
+  const zonaNorm = String(zona).trim().toLowerCase();
+  if (!zonaNorm) {
+    throw new HttpError(400, "Falta zona");
+  }
+
+  const r = await client.getAllOnusDetails({ refresh });
+
+  if (!r.ok) {
+    const data = (r as any).data;
+    if (isSmartOltHourlyLimit(data)) {
+      throw new HttpError(
+        429,
+        "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.",
+        data
+      );
+    }
+    throw new HttpError(
+      (r as any).status ?? 503,
+      "Error consultando SmartOLT (get_all_onus_details).",
+      data
+    );
+  }
+
+  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
+
+  const key = zonaRunKey(zona, onlyMintic);
+  const exported = refresh ? new Set<string>() : getExportedSet(key);
+
+  const zonaItems = onus.filter(
+    (o: any) => String(zonaOf(o) ?? "").trim().toLowerCase() === zonaNorm
+  );
+
+  const p1 = zonaItems.filter((o: any) => (onlyMintic ? isMinticGrp1(o) : true));
+  const p2 = zonaItems.filter((o: any) => (onlyMintic ? isMinticGrp2(o) : true));
+
+  let allIds = [
+    ...p1.map((o: any) => getExternalId(o)).filter((x): x is string => Boolean(x)),
+    ...p2.map((o: any) => getExternalId(o)).filter((x): x is string => Boolean(x)),
+  ];
+
+  allIds = Array.from(new Set(allIds));
+
+  const totalZona = allIds.length;
+
+  let ids = allIds.filter((id) => !exported.has(id));
+  const yaExportadasAntes = totalZona - ids.length;
+
+  ids = Array.from(new Set(ids));
+
+  if (!ids.length) {
+    throw new HttpError(
+      404,
+      `No hay ONUs nuevas para zona ${zona}${onlyMintic ? " (mintic=true)" : ""}. Probablemente ya descargaste todo.`
+    );
+  }
+
+  const run = createRun("zona", key, ids, 2 * 60 * 60 * 1000);
+
+  return {
+    runId: run.runId,
+    zona,
+    onlyMintic,
+    totalZona,
+    yaExportadasAntes,
+    pendientes: ids.length,
+    total: ids.length,
+    totalLotes: Math.ceil(ids.length / 100),
+    expiresInMinutes: 120,
+  };
+}
+
+export async function exportZonaRun(opts: {
+  runId: string;
+  batch?: number;
+  size?: number;
+  refresh?: boolean;
+}) {
+  const {
+    runId,
+    batch = 0,
+    size = 100,
+    refresh = false,
+  } = opts;
+
+  const run = getRun(runId);
+  if (!run) {
+    throw new HttpError(400, "runId inválido o expirado");
+  }
+
+  if (run.type !== "zona") {
+    throw new HttpError(400, "El run no corresponde a tipo ZONA");
+  }
+
+  const start = batch * size;
+  const end = start + size;
+  const idsBatch = run.ids.slice(start, end);
+
+  if (!idsBatch.length) {
+    throw new HttpError(404, "Lote vacío");
+  }
+
+  const exported = getExportedSet(run.key);
+  idsBatch.forEach((id) => exported.add(id));
+
+  const r = await client.getAllOnusDetails({ refresh });
+  if (!r.ok) {
+    const data = (r as any).data;
+    if (isSmartOltHourlyLimit(data)) {
+      throw new HttpError(
+        429,
+        "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.",
+        data
+      );
+    }
+    throw new HttpError(
+      (r as any).status ?? 503,
+      "Error consultando SmartOLT (get_all_onus_details).",
+      data
+    );
+  }
+
+  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
+
+  const byId = new Map<string, any>();
+  for (const o of onus) {
+    const id = getExternalId(o);
+    if (id) byId.set(id, o);
+  }
+
+  const list = idsBatch.map((id) => byId.get(id)).filter(Boolean);
+
+  type Job = { kind: "signal" | "trafico"; id: string };
+  const jobs: Job[] = [];
+
+  for (const o of list) {
+    const id = getExternalId(o);
+    if (!id) continue;
+    jobs.push({ kind: "signal", id });
+    jobs.push({ kind: "trafico", id });
+  }
+
+  const graphMap = new Map<string, { signal?: any; trafico?: any }>();
+  let smartOltLimitReached = false;
+
+  await mapLimit(jobs, 2, async (job) => {
+    if (smartOltLimitReached) return;
+
+    await sleep(120);
+
+    try {
+      const img =
+        job.kind === "signal"
+          ? await client.getOnuSignalGraphDataUrl(job.id, "monthly")
+          : await client.getOnuTrafficGraphDataUrl(job.id, "monthly");
+
+      const rawTxt = JSON.stringify(img ?? {}).toLowerCase();
+      if (rawTxt.includes("hourly limit")) {
+        smartOltLimitReached = true;
+        return;
+      }
+
+      const prev = graphMap.get(job.id) || {};
+      if (job.kind === "signal") prev.signal = img;
+      else prev.trafico = img;
+      graphMap.set(job.id, prev);
+    } catch (err: any) {
+      const txt = String(err?.message ?? err).toLowerCase();
+      if (txt.includes("hourly limit")) {
+        smartOltLimitReached = true;
+        return;
+      }
+      throw err;
+    }
+  });
+
+  if (smartOltLimitReached) {
+    throw new HttpError(
+      429,
+      "Se activó el límite de consultas de SmartOLT (hourly limit). No se generó el reporte."
+    );
+  }
+
+  const pages = chunk(list, 4);
+  const now = new Date();
+
+  const exportedNow = getExportedSet(run.key);
+  const generadasAcum = exportedNow.size;
+  const restantes = Math.max(0, run.ids.length - generadasAcum);
+
+  const zonaNombre = run.key.split(":")[1] ?? "zona";
+
+  const renderCard = (o: any) => {
+    const onuId = getExternalId(o) ?? "-";
+    const gm = graphMap.get(onuId) || {};
+    const upzLabel = upzLabelFromFilters(o);
+
+    return `
+      <div class="card">
+        <div class="head">
+          <div class="left">
+            <div class="name">${esc(o?.name ?? onuId)}</div>
+            <div class="sub">
+              <span class="pill ${pillClass(o?.status)}">${esc(o?.status ?? "-")}</span>
+              <span class="pill upz">${esc(upzLabel)}</span>
+              <span class="muted">OLT:</span> <b>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</b>
+              <span class="muted">CATV:</span> <b>${esc(o?.catv ?? "-")}</b>
+            </div>
+            <div class="comment"><span class="muted">Zona:</span> ${esc(zonaOf(o) || "-")}</div>
+            <div class="comment"><span class="muted">Comentario:</span> ${esc(commentText(o) || "-")}</div>
+            <div class="comment"><span class="muted">Fecha autorización:</span> ${esc(o?.authorization_date ?? "-")}</div>
+          </div>
+
+          <div class="right">
+            <div class="muted">External ID</div>
+            <div class="idv">${esc(onuId)}</div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          ${renderGraphBox("Señal (monthly)", gm.signal)}
+          ${renderGraphBox("Tráfico (monthly)", gm.trafico)}
+        </div>
+      </div>
+    `;
+  };
+
+  const renderPage = (items: any[]) => `
+    <section class="page">
+      <div class="pageHead">
+        <h1>Reporte Zona ${esc(zonaNombre)} | MINTIC LF3GRP1/LF3GRP2</h1>
+        <div class="meta">
+          Generado: ${esc(now.toLocaleString())}
+          | Total zona RUN: ${esc(run.ids.length)}
+          | Generadas: ${esc(generadasAcum)}
+          | Restantes: ${esc(restantes)}
+          | Lote: ${esc(batch)}
+          | Rango: ${esc(start)}-${esc(Math.min(end - 1, run.ids.length - 1))}
+        </div>
+      </div>
+
+      <div class="cards">
+        ${items.map(renderCard).join("")}
+      </div>
+    </section>
+  `;
+
+  const html = `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Reporte Zona ${esc(zonaNombre)}</title>
+        <style>
+          *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+          body{ margin:0; color:#111; }
+          .page{ padding:10mm; page-break-after: always; }
+          .page:last-child{ page-break-after: auto; }
+          .pageHead{ display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
+          h1{ margin:0; font-size:16px; }
+          .meta{ font-size:10px; color:#555; }
+          .cards{ display:flex; flex-direction:column; gap:8px; }
+          .card{ border:1px solid #e5e7eb; border-radius:12px; padding:8px; page-break-inside: avoid; break-inside: avoid; }
+          .head{ display:flex; justify-content:space-between; gap:10px; }
+          .name{ font-size:12px; font-weight:800; }
+          .sub{ margin-top:2px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+          .comment{ margin-top:4px; font-size:10px; color:#111; }
+          .muted{ color:#666; font-size:10px; }
+          .right{ min-width:180px; text-align:right; }
+          .idv{ font-weight:800; font-size:10px; word-break:break-all; }
+          .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:9px; border:1px solid #ddd; }
+          .pill.online{ border-color:#2ecc71; color:#2ecc71; }
+          .pill.los{ border-color:#e74c3c; color:#e74c3c; }
+          .pill.pf{ border-color:#f1c40f; color:#f1c40f; }
+          .pill.unk{ border-color:#7f8c8d; color:#7f8c8d; }
+          .pill.upz{ border-color:#4b5563; color:#4b5563; }
+          .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+          .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
+          .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
+          img{ width:100%; height:auto; display:block; max-height:220px; object-fit:contain; }
+          .gempty{
+            min-height:170px;
+            display:flex; align-items:center; justify-content:center;
+            text-align:center; font-size:9px; color:#666;
+            border:1px dashed #ddd; border-radius:8px; padding:8px; background:#fafafa;
+          }
+        </style>
+      </head>
+      <body>
+        ${pages.map(renderPage).join("")}
+      </body>
+    </html>
+  `;
+
+  const pdf = await renderPdf(html, {
+    format: "A4",
+    landscape: true,
+    margin: { top: "8mm", right: "6mm", bottom: "8mm", left: "6mm" },
+  });
+
+  return {
+    pdf,
+    filename: `reporte-zona-${zonaNombre}-batch-${batch}.pdf`,
+    total: run.ids.length,
+    batch,
+    size,
+    exportedNow: idsBatch.length,
+    remaining: restantes,
+  };
+}
+
+export async function resetZonaRun(opts: {
+  zona: string;
+  onlyMintic?: boolean;
+}) {
+  const { zona, onlyMintic = true } = opts;
+
+  const key = zonaRunKey(zona, onlyMintic);
+  getExportedSet(key).clear();
+
+  return {
+    ok: true,
+    message: "Reset zona aplicado",
+    zona,
+    onlyMintic,
+  };
+}
