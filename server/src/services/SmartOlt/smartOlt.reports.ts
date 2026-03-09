@@ -1,12 +1,23 @@
 import * as client from "./smartOlt.client.js"
 import { renderPdf } from "../../utils/SmartOlt/pdfEngine.js"
 import { esc, norm } from "../../utils/SmartOlt/normalize.js"
-import { commentText, isMintic, upzOf,uniqueExternalIds, getExternalId, dateOf, metaOf, zonaOf, isMinticGrp1, isMinticGrp2 } from "../../utils/SmartOlt/filters.js"
+import { commentText, 
+  isMintic, 
+  upzOf,
+  uniqueExternalIds, 
+  getExternalId, 
+  dateOf, 
+  metaOf, 
+  zonaOf, 
+  isMinticGrp1, 
+  isMinticGrp2,
+  healthFilterLabel,
+  HealthFilter,
+  matchesHealthFilter
+} from "../../utils/SmartOlt/filters.js"
 import { HttpError, isSmartOltHourlyLimit } from "./smartOlt.client.js"
 import { createRun, getRun, getExportedSet, markExported } from "../../utils/SmartOlt/runStore.js"
-import { number, unknown } from "zod"
 import { mapLimit, sleep } from "../../utils/SmartOlt/concurrency.js"
-import { from } from "puppeteer-core/lib/cjs/third_party/rxjs/rxjs.js"
 
 type GenerarPdfOpts={
     refresh?: boolean;
@@ -778,7 +789,7 @@ export async function exportUpzCardsRun(opts: {
 
   return {
     pdf,
-    filename: `reporte-upz-${upz}-batch-${batch}.pdf`,
+    filename: `reporte-upz-${upz}-${batch}.pdf`,
     total,
     batch,
     size,
@@ -1528,6 +1539,387 @@ export async function resetZonaRun(opts: {
     ok: true,
     message: "Reset zona aplicado",
     zona,
+    onlyMintic,
+  };
+}
+
+//---------------------Reporte por estado------------
+
+function healthRunKey(filter: HealthFilter, onlyMintic: boolean) {
+  const status = String(filter.status ?? "").trim().toLowerCase();
+  const signal = String(filter.signal ?? "").trim().toLowerCase();
+  return `health:${status}:${signal || "none"}:${onlyMintic ? "mintic" : "all"}`;
+}
+
+
+function badgeColor(status: string, signal: string) {
+  const s = status.toLowerCase();
+  const g = signal.toLowerCase();
+
+  if (s === "online" && g === "very good") return "good";
+  if (s === "online" && g === "warning") return "warn";
+  if (s === "online" && g === "critical") return "bad";
+  if (s === "los") return "los";
+  if (s === "offline") return "off";
+  if (s === "power fail" || s === "power failed") return "pf";
+  return "unk";
+}
+
+export async function createHealthRun(opts: {
+  filter: HealthFilter;
+  onlyMintic?: boolean;
+  refresh?: boolean;
+}) {
+  const {
+    filter,
+    onlyMintic = true,
+    refresh = false,
+  } = opts;
+
+  const status = String(filter.status ?? "").trim().toLowerCase();
+  const signal = String(filter.signal ?? "").trim().toLowerCase();
+
+  if (!status) {
+    throw new HttpError(400, "Falta status");
+  }
+
+  const r = await client.getAllOnusDetails({ refresh });
+
+  if (!r.ok) {
+    const data = (r as any).data;
+    if (isSmartOltHourlyLimit(data)) {
+      throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", data);
+    }
+    throw new HttpError((r as any).status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", data);
+  }
+
+  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
+
+  let filtered = onlyMintic ? onus.filter(isMintic) : onus;
+  filtered = filtered.filter((o: any) => matchesHealthFilter(o, { status, signal }));
+
+  if (!filtered.length) {
+    throw new HttpError(
+      404,
+      `No hay ONUs para filtro ${healthFilterLabel({ status, signal })}${onlyMintic ? " (mintic=true)" : ""}`
+    );
+  }
+
+  let ids = filtered
+    .map((o: any) => getExternalId(o))
+    .filter((x): x is string => Boolean(x));
+
+  ids = Array.from(new Set(ids));
+
+  const key = healthRunKey({ status, signal }, onlyMintic);
+  const exported = getExportedSet(key);
+
+  ids = ids.filter((id) => !exported.has(id));
+
+  if (!ids.length) {
+    throw new HttpError(
+      404,
+      `No hay ONUs nuevas para filtro ${healthFilterLabel({ status, signal })}${onlyMintic ? " (mintic=true)" : ""}.`
+    );
+  }
+
+  const run = createRun("zona", key, ids, 2 * 60 * 60 * 1000);
+
+  return {
+    runId: run.runId,
+    filter: { status, signal: signal || null },
+    onlyMintic,
+    total: ids.length,
+    totalLotes: Math.ceil(ids.length / 100),
+    expiresInMinutes: 120,
+    label: healthFilterLabel({ status, signal }),
+  };
+}
+
+export async function exportHealthRun(opts: {
+  runId: string;
+  batch?: number;
+  size?: number;
+  refresh?: boolean;
+}) {
+  const {
+    runId,
+    batch = 0,
+    size = 100,
+    refresh = false,
+  } = opts;
+
+  const run = getRun(runId);
+  if (!run) {
+    throw new HttpError(400, "runId inválido o expirado");
+  }
+
+  const parts = run.key.split(":");
+  const status = parts[1] ?? "";
+  const signal = parts[2] === "none" ? "" : (parts[2] ?? "");
+
+  const start = batch * size;
+  const end = start + size;
+  const idsBatch = run.ids.slice(start, end);
+
+  if (!idsBatch.length) {
+    throw new HttpError(404, "Lote vacío");
+  }
+
+  const exported = getExportedSet(run.key);
+  idsBatch.forEach((id) => exported.add(id));
+
+  const r = await client.getAllOnusDetails({ refresh });
+
+  if (!r.ok) {
+    const data = (r as any).data;
+    if (isSmartOltHourlyLimit(data)) {
+      throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", data);
+    }
+    throw new HttpError((r as any).status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", data);
+  }
+
+  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
+
+  const byId = new Map<string, any>();
+  for (const o of onus) {
+    const id = getExternalId(o);
+    if (id) byId.set(id, o);
+  }
+
+  const list = idsBatch.map((id) => byId.get(id)).filter(Boolean);
+
+  type Job = { kind: "signal" | "trafico"; id: string };
+  const jobs: Job[] = [];
+
+  for (const o of list) {
+    const id = getExternalId(o);
+    if (!id) continue;
+    jobs.push({ kind: "signal", id });
+    jobs.push({ kind: "trafico", id });
+  }
+
+  const graphMap = new Map<string, { signal?: any; trafico?: any }>();
+  let smartOltLimitReached = false;
+
+  await mapLimit(jobs, 2, async (job) => {
+    if (smartOltLimitReached) return;
+
+    await sleep(120);
+
+    try {
+      const img =
+        job.kind === "signal"
+          ? await client.getOnuSignalGraphDataUrl(job.id, "monthly")
+          : await client.getOnuTrafficGraphDataUrl(job.id, "monthly");
+
+      const rawTxt = JSON.stringify(img ?? {}).toLowerCase();
+      if (rawTxt.includes("hourly limit")) {
+        smartOltLimitReached = true;
+        return;
+      }
+
+      const prev = graphMap.get(job.id) || {};
+      if (job.kind === "signal") prev.signal = img;
+      else prev.trafico = img;
+      graphMap.set(job.id, prev);
+    } catch (err: any) {
+      const txt = String(err?.message ?? err).toLowerCase();
+      if (txt.includes("hourly limit")) {
+        smartOltLimitReached = true;
+        return;
+      }
+      throw err;
+    }
+  });
+
+  if (smartOltLimitReached) {
+    throw new HttpError(
+      429,
+      "Se activó el límite de consultas de SmartOLT (hourly limit). No se generó el reporte."
+    );
+  }
+
+  const pages = chunk(list, 4);
+  const now = new Date();
+
+  const exportedNow = getExportedSet(run.key);
+  const generadasAcum = exportedNow.size;
+  const restantes = Math.max(0, run.ids.length - generadasAcum);
+  const label = healthFilterLabel({ status, signal });
+
+  const renderCard = (o: any) => {
+    const onuId = getExternalId(o) ?? "-";
+    const gm = graphMap.get(onuId) || {};
+    const badge = badgeColor(String(o?.status ?? ""), String(o?.signal ?? ""));
+
+    return `
+      <div class="card">
+        <div class="head">
+          <div class="left">
+            <div class="name">${esc(o?.name ?? onuId)}</div>
+            <div class="sub">
+              <span class="pill ${badge}">${esc(o?.status ?? "-")}</span>
+              ${o?.signal ? `<span class="pill ${badge}">${esc(o.signal)}</span>` : ""}
+              <span class="pill upz">${esc(upzLabel(o))}</span>
+              <span class="muted">OLT:</span> <b>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</b>
+              <span class="muted">CATV:</span> <b>${esc(o?.catv ?? "-")}</b>
+            </div>
+            <div class="comment"><span class="muted">Zona:</span> ${esc(zonaOf(o) || "-")}</div>
+            <div class="comment"><span class="muted">Comentario:</span> ${esc(commentText(o) || "-")}</div>
+            ${
+              String(o?.status ?? "").trim().toLowerCase() === "online"
+                ? `<div class="comment"><span class="muted">Potencia:</span> Rx 1310 = <b>${esc(o?.signal_1310 ?? "-")}</b>${o?.signal_1490 ? ` | Rx 1490 = <b>${esc(o.signal_1490)}</b>` : ""}</div>`
+                : ""
+            }
+            <div class="comment"><span class="muted">Fecha autorización:</span> ${esc(o?.authorization_date ?? "-")}</div>
+          </div>
+
+          <div class="right">
+            <div class="muted">External ID</div>
+            <div class="idv">${esc(onuId)}</div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          ${renderGraphBox("Señal (monthly)", gm.signal)}
+          ${renderGraphBox("Tráfico (monthly)", gm.trafico)}
+        </div>
+      </div>
+    `;
+  };
+
+  const renderPage = (items: any[]) => `
+    <section class="page">
+      <div class="pageHead">
+        <h1>Reporte por estado | ${esc(label)}</h1>
+        <div class="meta">
+          Generado: ${esc(now.toLocaleString())}
+          | Total RUN: ${esc(run.ids.length)}
+          | Generadas: ${esc(generadasAcum)}
+          | Restantes: ${esc(restantes)}
+          | Lote: ${esc(batch)}
+          | Rango: ${esc(start)}-${esc(Math.min(end - 1, run.ids.length - 1))}
+        </div>
+      </div>
+
+      <div class="cards">
+        ${items.map(renderCard).join("")}
+      </div>
+    </section>
+  `;
+
+  const html = `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Reporte por estado</title>
+        <style>
+          *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+          body{ margin:0; color:#111; background:#f4f6f8; }
+          .page{ padding:10mm; page-break-after: always; }
+          .page:last-child{ page-break-after: auto; }
+          .pageHead{ display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+          h1{ margin:0; font-size:18px; font-weight:900; color:#123; }
+          .meta{ font-size:10px; color:#555; }
+          .cards{ display:flex; flex-direction:column; gap:10px; }
+          .card{
+            border:1px solid #dfe5ea;
+            border-radius:14px;
+            padding:10px;
+            background:#fff;
+            box-shadow:0 1px 3px rgba(0,0,0,.05);
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          .head{ display:flex; justify-content:space-between; gap:12px; }
+          .name{ font-size:14px; font-weight:900; color:#0f172a; }
+          .sub{ margin-top:4px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+          .comment{ margin-top:5px; font-size:10px; color:#111; }
+          .muted{ color:#666; font-size:10px; }
+          .right{ min-width:180px; text-align:right; }
+          .idv{ font-weight:800; font-size:10px; word-break:break-all; color:#0f172a; }
+          .pill{
+            display:inline-block;
+            padding:2px 8px;
+            border-radius:999px;
+            font-size:9px;
+            border:1px solid #ddd;
+            font-weight:700;
+            background:#fff;
+          }
+          .pill.good{ border-color:#16a34a; color:#16a34a; }
+          .pill.warn{ border-color:#f1c40f; color:#f1c40f; }
+          .pill.bad{ border-color:#e74c3c; color:#e74c3c; }
+          .pill.pf{ border-color:#7f8c8d; color:#7f8c8d; }
+          .pill.los{ border-color:#c0392b; color:#c0392b; }
+          .pill.off{ border-color:#34495e; color:#34495e; }
+          .pill.unk{ border-color:#95a5a6; color:#95a5a6; }
+          .pill.upz{ border-color:#4b5563; color:#4b5563; }
+          .grid2{ margin-top:8px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+          .g{ border:1px solid #e5e7eb; border-radius:12px; padding:8px; background:#fafafa; }
+          .gt{ font-size:11px; font-weight:800; margin-bottom:6px; }
+          img{
+            width:100%;
+            height:auto;
+            display:block;
+            max-height:220px;
+            object-fit:contain;
+            background:#fff;
+            border-radius:8px;
+          }
+          .gempty{
+            min-height:170px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            text-align:center;
+            font-size:9px;
+            color:#666;
+            border:1px dashed #ddd;
+            border-radius:8px;
+            padding:8px;
+            background:#fafafa;
+          }
+        </style>
+      </head>
+      <body>
+        ${pages.map(renderPage).join("")}
+      </body>
+    </html>
+  `;
+
+  const pdf = await renderPdf(html, {
+    format: "A4",
+    landscape: true,
+    margin: { top: "8mm", right: "6mm", bottom: "8mm", left: "6mm" },
+  });
+
+  return {
+    pdf,
+    filename: `reporte-health-${status}-${signal || "none"}-batch-${batch}.pdf`,
+    total: run.ids.length,
+    batch,
+    size,
+    exportedNow: idsBatch.length,
+    remaining: restantes,
+    label,
+  };
+}
+
+export async function resetHealthRun(opts: {
+  filter: HealthFilter;
+  onlyMintic?: boolean;
+}) {
+  const { filter, onlyMintic = true } = opts;
+  const key = healthRunKey(filter, onlyMintic);
+  getExportedSet(key).clear();
+
+  return {
+    ok: true,
+    message: "Reset reporte estado aplicado",
+    filter,
     onlyMintic,
   };
 }

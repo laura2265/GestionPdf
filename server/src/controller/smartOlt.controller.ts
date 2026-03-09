@@ -390,3 +390,83 @@ export async function resetZonaRun(req, res, next) {
     next(e);
   }
 }
+
+// reporte por estado
+
+export async function createHealthRun(req, res, next) {
+  try {
+    const refresh = toBool(req.query.refresh);
+    const onlyMintic = String(req.query.mintic ?? "true").toLowerCase() === "true";
+    const status = String(req.query.status ?? "").trim();
+    const signal = String(req.query.signal ?? "").trim();
+
+    if (!status) {
+      return res.status(400).json({ message: "Falta query param: status" });
+    }
+
+    const out = await report.createHealthRun({
+      filter: { status, signal },
+      onlyMintic,
+      refresh,
+    });
+
+    return res.json({
+      ...out,
+      exampleDownload: `/api/smart-olt/report/pdf-health?runId=${out.runId}&batch=0&size=100`,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function exportHealthRun(req, res, next) {
+  try {
+    const runId = String(req.query.runId ?? "").trim();
+    const batch = Math.max(0, Number(req.query.batch ?? 0) || 0);
+    const size = Math.min(100, Math.max(3, Number(req.query.size ?? 100) || 100));
+    const refresh = toBool(req.query.refresh);
+
+    if (!runId) {
+      return res.status(400).json({ message: "Falta runId" });
+    }
+
+    const out = await report.exportHealthRun({
+      runId,
+      batch,
+      size,
+      refresh,
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${out.filename}"`);
+    res.setHeader("X-Run-Total", String(out.total));
+    res.setHeader("X-Run-Batch", String(out.batch));
+    res.setHeader("X-Run-Exported-Now", String(out.exportedNow));
+    res.setHeader("X-Run-Remaining", String(out.remaining));
+
+    return res.status(200).send(out.pdf);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function resetHealthRun(req, res, next) {
+  try {
+    const onlyMintic = String(req.query.mintic ?? "true").toLowerCase() === "true";
+    const status = String(req.query.status ?? "").trim();
+    const signal = String(req.query.signal ?? "").trim();
+
+    if (!status) {
+      return res.status(400).json({ message: "Falta query param: status" });
+    }
+
+    const out = await report.resetHealthRun({
+      filter: { status, signal },
+      onlyMintic,
+    });
+
+    return res.json(out);
+  } catch (e) {
+    next(e);
+  }
+}

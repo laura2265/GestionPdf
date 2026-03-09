@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./smartol.css"; // si ya lo usas en SmartOlt, mantenlo aquí también
 
-async function downloadPdfOrAlert(url) {
+async function downloadPdfOrAlert(url,upz) {
     const res = await fetch(url, { method: "GET" });
 
     const contentType = res.headers.get("content-type") || "";
@@ -16,10 +16,10 @@ async function downloadPdfOrAlert(url) {
 
     const blob = await res.blob();
     const blobUrl = window.URL.createObjectURL(blob);
-
+    console.log(blob)
     const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = "reporte.pdf"; 
+    a.href = blobUrl; 
+    a.download = `reporte-upz-${upz}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -87,6 +87,7 @@ function Reportes() {
 
     const newRun = {
       runId: data.runId,
+      upzname: upzKey, 
       total: Number(data.total || 0),
       size: batchSize,
       nextBatch: 0,
@@ -102,6 +103,7 @@ function Reportes() {
     setLoading(true);
 
     let currentRun = upzRuns[upzKey];
+    console.log(currentRun)
     if (!currentRun) {
       currentRun = await createUpzRun(upzKey);
     }
@@ -117,8 +119,9 @@ function Reportes() {
     url.searchParams.set("runId", currentRun.runId);
     url.searchParams.set("batch", String(currentRun.nextBatch));
     url.searchParams.set("size", String(currentRun.size));
+    url.searchParams.set("upz", String(currentRun.upz))
 
-    await downloadPdfOrAlert(url.toString());
+    await downloadPdfOrAlert(url.toString(),upz);
 
     setUpzRuns((prev) => ({
       ...prev,
@@ -213,7 +216,7 @@ function Reportes() {
   return (
     <div className="smartolt-container">
       <header className="dashboard-header">
-        <h1 className="dashboard-title">SmartOlt Configuradas › Reportes › Reportes por UPZ</h1>
+        <h1 className="dashboard-title">Reportes › Reportes por UPZ</h1>
 
         <div className="header-smart">
           <div className="dropdown-reportes">

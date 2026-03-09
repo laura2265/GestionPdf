@@ -125,3 +125,40 @@ export function dateOf(o: any): Date | null {
 
   return new Date(t);
 }
+//por estado
+export type HealthFilter = {
+  status?: string;
+  signal?: string;
+};
+
+export function matchesHealthFilter(o: any, filter: HealthFilter): boolean {
+  const status = String(o?.status ?? "").trim().toLowerCase();
+  const signal = String(o?.signal ?? "").trim().toLowerCase();
+
+  const expectedStatus = String(filter.status ?? "").trim().toLowerCase();
+  const expectedSignal = String(filter.signal ?? "").trim().toLowerCase();
+
+  if (!expectedStatus) return false;
+
+  // Caso ONLINE: sí valida signal
+  if (expectedStatus === "online") {
+    if (status !== "online") return false;
+    if (!expectedSignal) return true;
+    return signal === expectedSignal;
+  }
+
+  return status === expectedStatus;
+}
+
+export function healthFilterLabel(filter: HealthFilter): string {
+  const status = String(filter.status ?? "").trim();
+  const signal = String(filter.signal ?? "").trim();
+
+  if (!status) return "Sin filtro";
+
+  if (status.toLowerCase() === "online" && signal) {
+    return `${status} + ${signal}`;
+  }
+
+  return status;
+}

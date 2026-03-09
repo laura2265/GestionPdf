@@ -75,7 +75,7 @@ function SmartOlt() {
           throw new Error(result?.message || "Error consultando SmartOLT");
         }
 
-        const list = Array.isArray(result?.onus) ? result.onus : [];
+        const list = result.items;
         setOnus(list);
         console.log(list)
       } catch (e) {
@@ -154,32 +154,12 @@ function SmartOlt() {
     }
   };
 
-  const ceilDiv = (a, b) => Math.ceil(Number(a) / Number(b));
-  const createUpzRun = async (upz) => {
-    const url = `${API_BASE}/report/pdf-upz/${upz}/run?mintic=true&refresh=true`;
-
-    const res = await fetch(url, { method: "GET", cache: "no-store" });
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) throw new Error(data?.message || "No se pudo crear el runId");
-
-    const run = {
-      runId: data.runId,
-      total: Number(data.total || 0),
-      size: batchSize,
-      nextBatch: 0,
-      createdAt: Date.now(),
-    };
-
-    setUpzRuns((prev) => ({ ...prev, [upz]: run }));
-    return run;
-  };
 
 
 
   const generarReporteONU = (id) => {
     window.open(
-      `http://localhost:3000/api/smart-olt/report/onu/${encodeURIComponent(id)}`,
+      `http://localhost:3000/api/smart-olt/report/onu-id/${encodeURIComponent(id)}`,
       "_blank"
     );
   };
@@ -217,7 +197,7 @@ function SmartOlt() {
               const params = new URLSearchParams();
               if (q.trim()) params.set("q", q.trim());
 
-              window.open(`http://localhost:3000/api/smart-olt/report/pdf?${params.toString()}`, "_blank");
+              window.open(`http://localhost:3000/api/smart-olt/report/pdf`, "_blank");
             }}
           >
             Generar PDF

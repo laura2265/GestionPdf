@@ -183,17 +183,19 @@ function InformacionIdExternal() {
   return (
     <div className="smartolt-container">
       <header className="dashboard-header">
+        
         <div>
           <h1 className="dashboard-title">{headerTitle}</h1>
           <p className="dashboard-subtitle">
             External ID: <b>{id}</b>
           </p>
         </div>
+        
+         
 
-        <div className="header-actions">
-          <button className="btn danger" onClick={menu}>Volver</button>
-          <button className="btn" onClick={generarReporteONU}>Generar reporte</button>
-          <button className="btn danger" onClick={cerrarSesion}>Cerrar Sesión</button>
+        <div className="header-smart">
+          <button className="btnGenerar" onClick={generarReporteONU}>Generar reporte</button>
+          <button className="btnVolver" onClick={menu}>Volver</button>
         </div>
       </header>
 
@@ -275,67 +277,69 @@ function InformacionIdExternal() {
       </div>
 
       <div className="onu-grid-1">
-        <div className="onu-toolbar">
-          <div className="onu-toolbar-left">
-            <h2 className="onu-section-title">Gráficas</h2>
-            <p className="onu-section-sub">Selecciona el rango para señal y tráfico.</p>
-          </div>
+        <div>
+          <div className="onu-toolbar">
+              <div className="onu-toolbar-left">
+                <h2 className="onu-section-title">Gráficas</h2>
+                <p className="onu-section-sub">Selecciona el rango para señal y tráfico.</p>
+              </div>
 
-          <div className="onu-toolbar-right"> 
-            <div className="onu-select-group">
-              <label>Señal</label>
-              <select value={tipoSignal} onChange={(e) => setTipoSignal(e.target.value)}>
-                {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
+              <div className="onu-toolbar-right"> 
+                <div className="onu-select-group">
+                  <label>Señal</label>
+                  <select value={tipoSignal} onChange={(e) => setTipoSignal(e.target.value)}>
+                    {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+
+                <div className="onu-select-group">
+                  <label>Tráfico</label>
+                  <select value={tipoTrafico} onChange={(e) => setTipoTrafico(e.target.value)}>
+                    {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
             </div>
 
-            <div className="onu-select-group">
-              <label>Tráfico</label>
-              <select value={tipoTrafico} onChange={(e) => setTipoTrafico(e.target.value)}>
-                {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
+            <div className="onu-Content">
+                <div className="onu-card">
+              <div className="onu-card-head">
+                <div>
+                  <h3 className="onu-card-title">Señal (gráfico)</h3>
+                  <p className="onu-card-sub">Rango: {tipoSignal}</p>
+                </div>
+              </div>
 
-        <div className="onu-Content">
+              {loadingSignal ? (
+                <p style={{ marginTop: 10 }}>Cargando señal...</p>
+              ) : signalImgUrl ? (
+                <div className="onu-chart-img-wrap">
+                  <img className="onu-chart-img" src={signalImgUrl} alt="Gráfica de señal" />
+                </div>
+              ) : (
+                <p style={{ marginTop: 10, opacity: 0.8 }}>No hay imagen para mostrar.</p>
+              )}
+            </div>
+
             <div className="onu-card">
-          <div className="onu-card-head">
-            <div>
-              <h3 className="onu-card-title">Señal (gráfico)</h3>
-              <p className="onu-card-sub">Rango: {tipoSignal}</p>
+              <div className="onu-card-head">
+                <div>
+                  <h3 className="onu-card-title">Tráfico (gráfico)</h3>
+                  <p className="onu-card-sub">Rango: {tipoTrafico}</p>
+                </div>
+              </div>
+
+              {loadingTrafico ? (
+                <p style={{ marginTop: 10 }}>Cargando tráfico...</p>
+              ) : traficoImgUrl ? (
+                <div className="onu-chart-img-wrap">
+                  <img className="onu-chart-img" src={traficoImgUrl} alt="Gráfica de tráfico" />
+                </div>
+              ) : (
+                <p style={{ marginTop: 10, opacity: 0.8 }}>No hay imagen para mostrar.</p>
+              )}
             </div>
           </div>
-
-          {loadingSignal ? (
-            <p style={{ marginTop: 10 }}>Cargando señal...</p>
-          ) : signalImgUrl ? (
-            <div className="onu-chart-img-wrap">
-              <img className="onu-chart-img" src={signalImgUrl} alt="Gráfica de señal" />
-            </div>
-          ) : (
-            <p style={{ marginTop: 10, opacity: 0.8 }}>No hay imagen para mostrar.</p>
-          )}
-        </div>
-
-        <div className="onu-card">
-          <div className="onu-card-head">
-            <div>
-              <h3 className="onu-card-title">Tráfico (gráfico)</h3>
-              <p className="onu-card-sub">Rango: {tipoTrafico}</p>
-            </div>
-          </div>
-
-          {loadingTrafico ? (
-            <p style={{ marginTop: 10 }}>Cargando tráfico...</p>
-          ) : traficoImgUrl ? (
-            <div className="onu-chart-img-wrap">
-              <img className="onu-chart-img" src={traficoImgUrl} alt="Gráfica de tráfico" />
-            </div>
-          ) : (
-            <p style={{ marginTop: 10, opacity: 0.8 }}>No hay imagen para mostrar.</p>
-          )}
-        </div>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-async function downloadPdfOrAlert(url) {
+async function downloadPdfOrAlert(url, upz, meta) {
   const res = await fetch(url, { method: "GET" });
   const contentType = res.headers.get("content-type") || "";
   if (!res.ok || contentType.includes("application/json")) {
@@ -14,7 +14,7 @@ async function downloadPdfOrAlert(url) {
   const blobUrl = window.URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = blobUrl;
-  a.download = "reporte.pdf"; 
+  a.download = `reporte-upz-${upz}-meta-${meta}.pdf`; 
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -174,7 +174,7 @@ export default function ReportesUpzMeta() {
       url.searchParams.set("size", String(currentRun.size));
       url.searchParams.set("refresh", refresh ? "true" : "false");
       
-      await downloadPdfOrAlert(url.toString());
+      await downloadPdfOrAlert(url.toString(), upz, meta);
 
 
       setRuns((prev) => ({
@@ -224,7 +224,7 @@ export default function ReportesUpzMeta() {
   return (
     <div className="smartolt-container">
       <header className="dashboard-header">
-        <h1 className="dashboard-title">SmartOlt Configuradas › Reportes › UPZ + Meta + Fechas</h1>
+        <h1 className="dashboard-title">Reportes › UPZ + Meta + Fechas</h1>
 
         <div className="header-smart">
           <div className="dropdown-reportes">

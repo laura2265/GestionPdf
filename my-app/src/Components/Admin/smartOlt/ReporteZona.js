@@ -35,7 +35,7 @@ function ReporteZona() {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
 
-      const result = data.data ?? [];
+      const result = data.zones ?? [];
       const uniqueNames = [...new Set(result.map((z) => z.name))].sort((a, b) =>
         String(a).localeCompare(String(b))
       );
