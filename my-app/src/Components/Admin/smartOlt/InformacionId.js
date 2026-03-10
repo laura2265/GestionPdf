@@ -184,18 +184,19 @@ function InformacionIdExternal() {
     <div className="smartolt-container">
       <header className="dashboard-header">
         
-        <div>
-          <h1 className="dashboard-title">{headerTitle}</h1>
-          <p className="dashboard-subtitle">
+        <div className="header-title-block">
+          <h1 >{headerTitle}</h1>
+          <p>
             External ID: <b>{id}</b>
           </p>
         </div>
-        
-         
 
-        <div className="header-smart">
-          <button className="btnGenerar" onClick={generarReporteONU}>Generar reporte</button>
-          <button className="btnVolver" onClick={menu}>Volver</button>
+        <div className="header-actions1">
+          <button className="btn" onClick={generarReporteONU}>Generar reporte</button>
+
+          <button className="btn secondary" onClick={() => navigate(-1)}>
+            Volver
+          </button>
         </div>
       </header>
 

@@ -15,6 +15,7 @@ function ReporteZona() {
   const [yaExportadasAntes, setYaExportadasAntes] = useState(0);
   const [pendientes, setPendientes] = useState(0);
   const [generadas, setGeneradas] = useState(0);
+  const [listStatus, setListStatus] = useState("idle");
 
   const [batchActual, setBatchActual] = useState(0);
 
@@ -78,6 +79,7 @@ function ReporteZona() {
 
     setLoadingRun(true);
     setError("");
+    setListStatus("idle")
 
     try {
       const url = `${baseUrl}/report/pdf-zona/run?zona=${encodeURIComponent(selectedZona)}&mintic=true&refresh=true`;
@@ -119,9 +121,14 @@ function ReporteZona() {
     URL.revokeObjectURL(link.href);
   };
 
-  const handleDescargarLote = async (batch) => {
+  const handleDescargarLote = async () => {
     if (!runId) {
       setError("Primero genera el listado para obtener el runId.");
+      return;
+    }
+
+    if (batchActual >= totalLotes) {
+      setError("Ya descargaste todos los lotes.");
       return;
     }
 
@@ -129,15 +136,18 @@ function ReporteZona() {
     setError("");
 
     try {
-      const url = `${baseUrl}/report/pdf-zona?runId=${encodeURIComponent(runId)}&batch=${batch}&size=${loteSize}`;
+      const batchToDownload = batchActual;
+
+      const url = `${baseUrl}/report/pdf-zona?runId=${encodeURIComponent(runId)}&batch=${batchToDownload}&size=${loteSize}`;
       const r = await fetch(url);
 
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
 
       const blob = await r.blob();
-      downloadBlob(blob, `reporte-zona-${selectedZona}-batch-${batch}.pdf`);
+      downloadBlob(blob, `reporte-zona-${selectedZona}-batch-${batchToDownload}.pdf`);
 
-      setBatchActual(batch);
+      // OJO: aquí sí avanzamos al siguiente lote
+      setBatchActual((prev) => prev + 1);
     } catch (e) {
       console.error(e);
       setError("No se pudo descargar el lote. Revisa el endpoint /report/pdf-zona.");
@@ -168,7 +178,7 @@ function ReporteZona() {
 
         const blob = await r.blob();
         downloadBlob(blob, `reporte-zona-${selectedZona}-batch-${b}.pdf`);
-        setBatchActual(b);
+        setBatchActual(b+1);
       }
     } catch (e) {
       console.error(e);
@@ -207,26 +217,31 @@ function ReporteZona() {
 
   return (
     <div className="smartolt-container">
-      <header className="dashboard-header">
-        <h1 className="dashboard-title">SmartOlt Configuradas › Reportes › Reportes por Zona</h1>
+      <header className="dashboard-header1">
+        <div className="header-title-block">
+          <h1>
+            Reportes › Reportes por Zona
+          </h1>
+          <p>Consulta, genera y descarga reportes por zona de ONUs.</p>
 
-        <div className="header-smart">
+        </div>
+        
+        <div className="header-actions1">
           <div className="dropdown-reportes">
-            <button className="btnReporte">Reportes ▾</button>
+            <button className="btn">Reportes▾</button>
             <div className="dropdown-reportes-menu">
               <button onClick={() => navigate("/reportes")}>Reporte por UPZ</button>
               <button onClick={() => navigate("/reporte-Upz-Meta")}>Reporte por Meta</button>
               <button onClick={() => navigate("/reporte-zona")}>Reporte por Zona</button>
-              <button onClick={() => navigate("/reporte-estado")}>
-                Reporte por Estado
-              </button>
+              <button onClick={() => navigate("/reporte-estado")}>Reporte por Estado</button>
             </div>
           </div>
 
-          <button className="btnVolver" onClick={() => navigate(-1)}>Volver</button>
+          <button className="btn secondary" onClick={() => navigate(-1)}>
+            Volver
+          </button>
         </div>
       </header>
-
       <div className="ContentReporUpz">
         <div className="reportUpz">
           <div className="titleUpz">
@@ -261,12 +276,17 @@ function ReporteZona() {
             </div>
 
             <div className="botonesGenerarReportUPZ">
-              <button onClick={handleGenerarListado} disabled={!canRun}>
+              
+              <button
+                className={`btnGnerarUpz btnStatus-${loadingRun ? "loading" : listStatus}`}
+                onClick={handleGenerarListado}
+                disabled={loadingRun}
+              >
                 {loadingRun ? "Generando..." : "Generar listado"}
               </button>
 
-              <button className="btnGnerarUpz" onClick={() => handleDescargarLote(batchActual)} disabled={!canDownload}>
-                {loadingDownload ? "Descargando..." : `Descargar ${batchActual}`}
+              <button className="btnGnerarUpz" onClick={handleDescargarLote} disabled={!canDownload}>
+                {loadingDownload ? "Descargando..." : `Descargar lote ${batchActual + 1}`}
               </button>
 
               <button className="btnGnerarUpz" onClick={handleDescargarTodos} disabled={!canDownload}>
@@ -282,11 +302,11 @@ function ReporteZona() {
               <p>RunId: <b>{runId ?? "-"}</b></p>
 
               <p>
-                Total en zona: <b>{totalZona || "-"}</b>
+                Total encontradas en la zona: <b>{totalZona || "-"}</b>
               </p>
 
               <p>
-                Total Lotes: <b>{runId ? totalLotes : "-"}</b> | Lote actual: <b>{batchActual}</b>
+                Total Lotes de lotes a generar: <b>{runId ? totalLotes : "-"}</b> | Lote actual: <b>{batchActual}</b>
               </p>
             </div>
 

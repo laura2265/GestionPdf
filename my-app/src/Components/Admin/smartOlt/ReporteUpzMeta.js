@@ -199,52 +199,98 @@ export default function ReportesUpzMeta() {
   };
 
   const resetRun = async (upzKey) => {
-  try {
-    setError("");
-    setLoading(true);
+    try {
+      setError("");
+      setLoading(true);
 
-    const url = new URL(`${API_BASE}/report/pdf-upz-meta/${upzKey}/reset`);
-    url.searchParams.set("mintic", onlyMintic ? "true" : "false");
-    url.searchParams.set("meta", meta);
+      const url = new URL(`${API_BASE}/report/pdf-upz-meta/${upzKey}/reset`);
+      url.searchParams.set("mintic", onlyMintic ? "true" : "false");
+      url.searchParams.set("meta", meta);
 
-    const res = await fetch(url.toString(), { method: "POST" });
-    const data = await res.json().catch(() => ({}));
+      const res = await fetch(url.toString(), { method: "POST" });
+      const data = await res.json().catch(() => ({}));
 
-    if (!res.ok) throw new Error(data?.message || "No se pudo resetear en backend");
+      if (!res.ok) throw new Error(data?.message || "No se pudo resetear en backend");
 
-    setRuns((prev) => ({ ...prev, [upzKey]: null }));
-  } catch (e) {
-    setError(e?.message || "Error en reset");
-  } finally {
-    setLoading(false);
-  }
-};
+      setRuns((prev) => ({ ...prev, [upzKey]: null }));
+    } catch (e) {
+      setError(e?.message || "Error en reset");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDescargarTodos = async () => {
+    try {
+      setError("");
+      setLoading(true);
+
+      let currentRun = runs[upz];
+
+      if (!currentRun || filtrosCambiaron(currentRun)) {
+        currentRun = await createRun(upz);
+      }
+
+      const totalBatches = Math.ceil(currentRun.total / currentRun.size);
+
+      for (let batch = currentRun.nextBatch; batch < totalBatches; batch++) {
+
+        const url = new URL(`${API_BASE}/report/pdf-upz-meta/${upz}`);
+        url.searchParams.set("runId", currentRun.runId);
+        url.searchParams.set("batch", String(batch));
+        url.searchParams.set("size", String(currentRun.size));
+        url.searchParams.set("refresh", refresh ? "true" : "false");
+
+        await downloadPdfOrAlert(url.toString(), upz, meta);
+
+        setRuns((prev) => ({
+          ...prev,
+          [upz]: {
+            ...prev[upz],
+            nextBatch: batch + 1
+          }
+        }));
+
+        // pequeña pausa para no saturar la API
+        await new Promise(r => setTimeout(r, 400));
+      }
+
+    } catch (e) {
+      setError(e?.message || "Error descargando todos los lotes");
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
   return (
     <div className="smartolt-container">
-      <header className="dashboard-header">
-        <h1 className="dashboard-title">Reportes › UPZ + Meta + Fechas</h1>
+      <header className="dashboard-header1">
+        <div className="header-title-block">
+          <h1>
+            Reportes › Reportes por  UPZ + Meta
+          </h1>
+          <p>Consulta, genera y descarga reportes por upz y meta de ONUs.</p>
 
-        <div className="header-smart">
+        </div>
+        
+        <div className="header-actions1">
           <div className="dropdown-reportes">
-            <button className="btnReporte">Reportes ▾</button>
-
+            <button className="btn">Reportes▾</button>
             <div className="dropdown-reportes-menu">
               <button onClick={() => navigate("/reportes")}>Reporte por UPZ</button>
               <button onClick={() => navigate("/reporte-Upz-Meta")}>Reporte por Meta</button>
               <button onClick={() => navigate("/reporte-zona")}>Reporte por Zona</button>
-              <button onClick={() => navigate("/reporte-estado")}>
-                Reporte por Estado
-              </button>
+              <button onClick={() => navigate("/reporte-estado")}>Reporte por Estado</button>
             </div>
           </div>
 
-          <button className="btnVolver" onClick={menu}>
+          <button className="btn secondary" onClick={() => navigate(-1)}>
             Volver
           </button>
         </div>
       </header>
+
       <div className="ContentReporUpz">
         <div className="reportUpz">
         <div className="titleUpz">
@@ -300,16 +346,23 @@ export default function ReportesUpzMeta() {
 
           <div className="botonesGenerarReportUPZ">
             <button
-              className={`btnGnerarUpz btnStatus-${listStatus}`}
-              onClick={handleGenerarListado}
-              disabled={loading}
-            >
-              Generar listado
-            </button>
+                className={`btnGnerarUpz btnStatus-${loading ? "loading" : listStatus}`}
+                onClick={handleGenerarListado}
+                disabled={loading}
+              >
+                {loading ? "Generando..." : "Generar listado"}
+              </button>
 
 
             <button className="btnGnerarUpz" onClick={handleDescargarLote} disabled={loading}>
               Descargar siguiente lote
+            </button>
+            <button
+              className="btnGnerarUpz"
+              onClick={handleDescargarTodos}
+              disabled={loading}
+            >
+              Descargar todos
             </button>
 
             <button className="btnGnerarUpz" onClick={() => resetRun(upz)} disabled={loading}>
@@ -322,7 +375,7 @@ export default function ReportesUpzMeta() {
 
           <div className="totalReportsUpz">
             <p>
-              Total ONUs: <b>{progreso.totalOnus || 0}</b> | Total Lotes: <b>{progreso.totalLotes || 0}</b>
+              Total ONUs encontradas: <b>{progreso.totalOnus || 0}</b> | Total Lotes a generar: <b>{progreso.totalLotes || 0}</b>
             </p>
 
             {run && (

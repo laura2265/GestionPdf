@@ -167,13 +167,15 @@ function SmartOlt() {
   return (
     <div className="smartolt-container">
       <header className="dashboard-header">
-        <h1 className="dashboard-title">SmartOlt Configuradas</h1>
+        <div className="header-title-block">
+          <h1>SmartOlt Configuradas</h1>
+        </div>
 
-        <div className="header-smart">
+        <div className="header-actions1">
           
           <div className="dropdown-reportes">
-            <button className="btnReporte">
-              Reportes ▾
+            <button className="btn">
+              Reportes▾
             </button>
             <div className="dropdown-reportes-menu">
               <button onClick={() => navigate("/reportes")}>
@@ -192,7 +194,7 @@ function SmartOlt() {
           </div>
 
           <button
-            className="btnGenerar"
+            className="btn secondary"
             onClick={() => {
               const params = new URLSearchParams();
               if (q.trim()) params.set("q", q.trim());
@@ -204,7 +206,7 @@ function SmartOlt() {
           </button>
 
           
-          <button className="btnVolver" onClick={menu}>
+          <button className="btn" onClick={menu}>
             Volver
           </button>      
           

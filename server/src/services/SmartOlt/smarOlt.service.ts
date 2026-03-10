@@ -9,6 +9,8 @@ import {
   upzLabel,
   uniqueExternalIds,
 } from "../../utils/SmartOlt/filters.js";
+import { norm } from "../../utils/SmartOlt/normalize.js";
+import { unknown } from "zod";
 
 type ListOnusOpts = {
   refresh?: boolean;
@@ -102,4 +104,102 @@ export async function getSignalGraphImage(id: string, tipo: string) {
 
 export async function getTrafficGraphImage(id: string, tipo: string) {
   return client.getOnuTrafficGraphImage(id, tipo); // ✅ imagen
+}
+
+//----------------------Estadisticas-------------------------------
+type StatsOpts = {
+  refresh?: boolean;
+  onlyMintic?: boolean;
+};
+
+function inc(map: Record<string, number>, key: string) {
+  map[key] = (map[key] ?? 0) + 1;
+}
+
+function normalizeStatus(v: any): string {
+  const s = norm(v);
+  if (s === "online") return "online";
+  if (s === "offline") return "offline";
+  if (s === "los") return "los";
+  if (s === "power fail" || s === "power failed" || s === "power_failed") return "power_fail";
+  return "unknown";
+}
+
+function normalizeSignal(v: any): string {
+  const s = norm(v);
+  if (s === "very good") return "very_good";
+  if (s === "warning") return "warning";
+  if (s === "critical") return "critical";
+  return "unknown";
+}
+
+export async function getStatsReport(opts: StatsOpts = {}) {
+  const { refresh = false, onlyMintic = true } = opts;
+
+  const r = await client.getAllOnusDetails({ refresh });
+  let onus = r.onus ?? [];
+
+  const totalAll = onus.length;
+  const totalMintic = onus.filter(isMintic).length;
+
+  if (onlyMintic) {
+    onus = onus.filter(isMintic);
+  }
+
+  const byUpz: Record<string, number> = {
+    lucero: 0,
+    tesoro: 0,
+    otro: 0,
+  };
+
+  const byMeta: Record<string, number> = {
+    m1: 0,
+    m2: 0,
+    m3: 0,
+    none: 0,
+  };
+
+  const byZona: Record<string, number> = {};
+  const byEstado: Record<string, number> = {
+    online: 0,
+    offline: 0,
+    power_fail: 0,
+    los: 0,
+    unknown: 0,
+  };
+
+  const bySignal: Record<string, number> = {
+    very_good: 0,
+    warning: 0,
+    critical: 0,
+    unknown: 0,
+  };
+
+  for (const o of onus) {
+    inc(byUpz, upzOf(o));
+    inc(byMeta, metaOf(o));
+    inc(byZona, zonaOf(o) || "SIN_ZONA");
+    inc(byEstado, normalizeStatus(o?.status));
+    inc(bySignal, normalizeSignal(o?.signal));
+  }
+
+  const zonasOrdenadas = Object.entries(byZona)
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, value]) => ({ label, value }));
+
+  return {
+    totalAll,
+    totalMintic,
+    totalAnalizado: onus.length,
+    byUpz,
+    byMeta,
+    byZona,
+    zonasOrdenadas,
+    byEstado,
+    bySignal,
+    meta: {
+      fromCache: r.fromCache,
+      cachedAt: r.cachedAt ?? null,
+    },
+  };
 }

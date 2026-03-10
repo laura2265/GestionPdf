@@ -1,4 +1,5 @@
 import * as client from "./smartOlt.client.js"
+import * as service from "./smarOlt.service.js"
 import { renderPdf } from "../../utils/SmartOlt/pdfEngine.js"
 import { esc, norm } from "../../utils/SmartOlt/normalize.js"
 import { commentText, 
@@ -1740,7 +1741,7 @@ export async function exportHealthRun(opts: {
     );
   }
 
-  const pages = chunk(list, 4);
+  const pages = chunk(list, 2);
   const now = new Date();
 
   const exportedNow = getExportedSet(run.key);
@@ -1818,28 +1819,84 @@ export async function exportHealthRun(opts: {
         <style>
           *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
           body{ margin:0; color:#111; background:#f4f6f8; }
-          .page{ padding:10mm; page-break-after: always; }
-          .page:last-child{ page-break-after: auto; }
-          .pageHead{ display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+          .page{
+            padding:7mm;
+            page-break-after: always;
+            min-height: 190mm;
+            display: flex;
+            flex-direction: column;
+          }
+          .page:last-child{ 
+            page-break-after: auto; 
+          }
+          .pageHead{
+            display:flex;
+            flex-direction:column;
+            gap:2px;
+            margin-bottom:5px;
+            flex: 0 0 auto;
+          }
+            .cards{
+              display:grid;
+              grid-template-rows: 1fr 1fr;
+              gap:8px;
+              flex: 1 1 auto;
+              min-height: 0;
+            }
+            .card{
+              border:1px solid #dfe5ea;
+              border-radius:14px;
+              padding:8px;
+              background:#fff;
+              box-shadow:0 1px 3px rgba(0,0,0,.05);
+              overflow:hidden;
+              min-height:0;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+
           h1{ margin:0; font-size:18px; font-weight:900; color:#123; }
           .meta{ font-size:10px; color:#555; }
-          .cards{ display:flex; flex-direction:column; gap:10px; }
-          .card{
-            border:1px solid #dfe5ea;
-            border-radius:14px;
-            padding:10px;
-            background:#fff;
-            box-shadow:0 1px 3px rgba(0,0,0,.05);
-            page-break-inside: avoid;
-            break-inside: avoid;
+          .head{
+            display:flex;
+            justify-content:space-between;
+            gap:10px;
           }
-          .head{ display:flex; justify-content:space-between; gap:12px; }
-          .name{ font-size:14px; font-weight:900; color:#0f172a; }
-          .sub{ margin-top:4px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-          .comment{ margin-top:5px; font-size:10px; color:#111; }
-          .muted{ color:#666; font-size:10px; }
-          .right{ min-width:180px; text-align:right; }
-          .idv{ font-weight:800; font-size:10px; word-break:break-all; color:#0f172a; }
+          .head{
+            display:flex;
+            justify-content:space-between;
+            gap:10px;
+          }
+          .sub{
+            margin-top:3px;
+            font-size:9px;
+            display:flex;
+            gap:6px;
+            align-items:center;
+            flex-wrap:wrap;
+          }
+          .comment{
+            margin-top:4px;
+            font-size:8px;
+            color:#111;
+          }
+
+          .muted{
+            color:#666;
+            font-size:10px;
+          }
+
+          .right{
+            min-width:150px;
+            text-align:right;
+          }
+
+          .idv{
+            font-weight:800;
+            font-size:9px;
+            word-break:break-all;
+            color:#0f172a;
+          }
           .pill{
             display:inline-block;
             padding:2px 8px;
@@ -1849,6 +1906,7 @@ export async function exportHealthRun(opts: {
             font-weight:700;
             background:#fff;
           }
+
           .pill.good{ border-color:#16a34a; color:#16a34a; }
           .pill.warn{ border-color:#f1c40f; color:#f1c40f; }
           .pill.bad{ border-color:#e74c3c; color:#e74c3c; }
@@ -1857,20 +1915,37 @@ export async function exportHealthRun(opts: {
           .pill.off{ border-color:#34495e; color:#34495e; }
           .pill.unk{ border-color:#95a5a6; color:#95a5a6; }
           .pill.upz{ border-color:#4b5563; color:#4b5563; }
-          .grid2{ margin-top:8px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
-          .g{ border:1px solid #e5e7eb; border-radius:12px; padding:8px; background:#fafafa; }
-          .gt{ font-size:11px; font-weight:800; margin-bottom:6px; }
+          .grid2{
+            margin-top:6px;
+            display:grid;
+            grid-template-columns: 1fr 1fr;
+            gap:4px;
+          }
+
+          .g{
+            border:1px solid #e5e7eb;
+            border-radius:10px;
+            padding:1px;
+            background:#fafafa;
+          }
+
+          .gt{
+            font-size:10px;
+            font-weight:800;
+            margin-bottom:2px;
+          }
+
           img{
             width:100%;
             height:auto;
             display:block;
-            max-height:220px;
+            max-height:180px;
             object-fit:contain;
             background:#fff;
             border-radius:8px;
           }
           .gempty{
-            min-height:170px;
+            min-height:110px;
             display:flex;
             align-items:center;
             justify-content:center;
@@ -1898,7 +1973,7 @@ export async function exportHealthRun(opts: {
 
   return {
     pdf,
-    filename: `reporte-health-${status}-${signal || "none"}-batch-${batch}.pdf`,
+    filename: `reporte-estado-${status}-${signal || "none"}-${batch}.pdf`,
     total: run.ids.length,
     batch,
     size,
@@ -1921,5 +1996,333 @@ export async function resetHealthRun(opts: {
     message: "Reset reporte estado aplicado",
     filter,
     onlyMintic,
+  };
+}
+
+//------------------PDF POR ESTADISTICAS-------------------
+
+function maxValue(entries: Array<[string, number]>) {
+  return Math.max(1, ...entries.map(([, v]) => v));
+}
+
+function renderBarGroup(
+  title: string,
+  entries: Array<[string, number]>,
+  colorClass = "blue"
+) {
+  const max = maxValue(entries);
+
+  return `
+    <section class="block">
+      <div class="block-title">${esc(title)}</div>
+      <div class="bar-list">
+        ${entries
+          .map(([label, value]) => {
+            const pct = Math.max(3, Math.round((value / max) * 100));
+            return `
+              <div class="bar-item">
+                <div class="bar-head">
+                  <span class="bar-label">${esc(label)}</span>
+                  <span class="bar-number">${value}</span>
+                </div>
+                <div class="bar-track">
+                  <div class="bar-fill ${colorClass}" style="width:${pct}%"></div>
+                </div>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderStatCard(label: string, value: number, tone = "blue") {
+  return `
+    <div class="stat-card ${tone}">
+      <div class="stat-label">${esc(label)}</div>
+      <div class="stat-value">${value}</div>
+    </div>
+  `;
+}
+
+export async function generateStatsPdf(opts: {
+  refresh?: boolean;
+  onlyMintic?: boolean;
+}) {
+  const data = await service.getStatsReport(opts);
+  const now = new Date();
+
+  const upzEntries: Array<[string, number]> = [
+    ["Lucero", data.byUpz.lucero ?? 0],
+    ["Tesoro", data.byUpz.tesoro ?? 0],
+    ["Otras", data.byUpz.otro ?? 0],
+  ];
+
+  const metaEntries: Array<[string, number]> = [
+    ["M1", data.byMeta.m1 ?? 0],
+    ["M2", data.byMeta.m2 ?? 0],
+    ["M3", data.byMeta.m3 ?? 0],
+    ["Sin meta", data.byMeta.none ?? 0],
+  ];
+
+  const estadoEntries: Array<[string, number]> = [
+    ["Online", data.byEstado.online ?? 0],
+    ["Offline", data.byEstado.offline ?? 0],
+    ["Power fail", data.byEstado.power_fail ?? 0],
+    ["LOS", data.byEstado.los ?? 0],
+    ["Unknown", data.byEstado.unknown ?? 0],
+  ];
+
+  const signalEntries: Array<[string, number]> = [
+    ["Very good", data.bySignal.very_good ?? 0],
+    ["Warning", data.bySignal.warning ?? 0],
+    ["Critical", data.bySignal.critical ?? 0],
+    ["Unknown", data.bySignal.unknown ?? 0],
+  ];
+
+  const zonaTop = data.zonasOrdenadas
+    .slice(0, 12)
+    .map((z: any) => [z.label, z.value] as [string, number]);
+
+  const html = `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Reporte estadístico SmartOLT</title>
+        <style>
+          * {
+            box-sizing: border-box;
+            font-family: Arial, Helvetica, sans-serif;
+          }
+
+          body {
+            margin: 0;
+            padding: 22px;
+            color: #111827;
+            background: #f8fafc;
+          }
+
+          .header {
+            margin-bottom: 18px;
+          }
+
+          .title {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 900;
+            color: #0f172a;
+          }
+
+          .subtitle {
+            margin-top: 6px;
+            font-size: 12px;
+            color: #64748b;
+            line-height: 1.5;
+          }
+
+          .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 18px;
+          }
+
+          .stat-card {
+            background: #fff;
+            border-radius: 16px;
+            padding: 14px 16px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 2px rgba(0,0,0,.04);
+          }
+
+          .stat-card.blue { border-left: 6px solid #2563eb; }
+          .stat-card.green { border-left: 6px solid #16a34a; }
+          .stat-card.slate { border-left: 6px solid #475569; }
+
+          .stat-label {
+            font-size: 13px;
+            color: #64748b;
+          }
+
+          .stat-value {
+            margin-top: 6px;
+            font-size: 28px;
+            font-weight: 900;
+            color: #0f172a;
+          }
+
+          .layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+          }
+
+          .block {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 14px;
+            box-shadow: 0 1px 2px rgba(0,0,0,.04);
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+
+          .block.full {
+            grid-column: 1 / -1;
+          }
+
+          .block-title {
+            font-size: 15px;
+            font-weight: 800;
+            color: #0f172a;
+            margin-bottom: 12px;
+          }
+
+          .bar-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+          }
+
+          .bar-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          }
+
+          .bar-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: center;
+          }
+
+          .bar-label {
+            font-size: 12px;
+            color: #334155;
+            font-weight: 600;
+            word-break: break-word;
+          }
+
+          .bar-number {
+            font-size: 12px;
+            font-weight: 800;
+            color: #0f172a;
+          }
+
+          .bar-track {
+            width: 100%;
+            height: 14px;
+            background: #e2e8f0;
+            border-radius: 999px;
+            overflow: hidden;
+          }
+
+          .bar-fill {
+            height: 100%;
+            border-radius: 999px;
+          }
+
+          .bar-fill.blue { background: linear-gradient(90deg, #3b82f6, #2563eb); }
+          .bar-fill.green { background: linear-gradient(90deg, #22c55e, #16a34a); }
+          .bar-fill.amber { background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+          .bar-fill.red { background: linear-gradient(90deg, #f87171, #dc2626); }
+          .bar-fill.slate { background: linear-gradient(90deg, #94a3b8, #64748b); }
+
+          .zone-cloud {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+          }
+
+          .zone-pill {
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            padding: 10px 12px;
+            background: #f8fafc;
+          }
+
+          .zone-pill-name {
+            font-size: 12px;
+            color: #334155;
+            font-weight: 700;
+          }
+
+          .zone-pill-value {
+            margin-top: 4px;
+            font-size: 18px;
+            font-weight: 900;
+            color: #0f172a;
+          }
+
+          .foot {
+            margin-top: 16px;
+            font-size: 10px;
+            color: #64748b;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1 class="title">Reporte estadístico SmartOLT</h1>
+          <div class="subtitle">
+            Generado: ${esc(now.toLocaleString())}<br/>
+            Total general: ${data.totalAll} | Total MINTIC: ${data.totalMintic} | Total analizado: ${data.totalAnalizado}
+          </div>
+        </div>
+
+        <div class="summary-grid">
+          ${renderStatCard("Total general", data.totalAll, "blue")}
+          ${renderStatCard("Total MINTIC", data.totalMintic, "green")}
+          ${renderStatCard("Total analizado", data.totalAnalizado, "slate")}
+        </div>
+
+        <div class="layout">
+          ${renderBarGroup("Distribución por UPZ", upzEntries, "blue")}
+          ${renderBarGroup("Distribución por Meta", metaEntries, "green")}
+          ${renderBarGroup("Distribución por Estado", estadoEntries, "red")}
+          ${renderBarGroup("Distribución por calidad de señal", signalEntries, "amber")}
+
+          <section class="block full">
+            <div class="block-title">Top zonas</div>
+            ${renderBarGroup("Zonas con más ONUs", zonaTop, "slate")}
+          </section>
+
+          <section class="block full">
+            <div class="block-title">Vista rápida por zonas</div>
+            <div class="zone-cloud">
+              ${zonaTop
+                .map(
+                  ([label, value]) => `
+                    <div class="zone-pill">
+                      <div class="zone-pill-name">${esc(label)}</div>
+                      <div class="zone-pill-value">${value}</div>
+                    </div>
+                  `
+                )
+                .join("")}
+            </div>
+          </section>
+        </div>
+
+        <div class="foot">
+          Este reporte muestra distribución de ONUs por UPZ, Meta, Estado, señal y zonas.
+        </div>
+      </body>
+    </html>
+  `;
+
+  const pdf = await renderPdf(html, {
+    format: "A4",
+    landscape: false,
+    margin: { top: "10mm", right: "8mm", bottom: "10mm", left: "8mm" },
+  });
+
+  return {
+    pdf,
+    filename: "reporte-estadistico-smartolt.pdf",
+    data,
   };
 }

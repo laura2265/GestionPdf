@@ -187,22 +187,21 @@ function Reportes() {
 
 
     const handleGenerarListado = async () => {
-    try {
-      setError("");
-      setListStatus("idle");
-      setLoading(true);
-
-      await createUpzRun(upz);
-
-      setListStatus("ok");
-    } catch (e) {
-      setListStatus("error");
-      setError(e?.message || "No se pudo generar el listado");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+      try {
+        setError("");
+        setListStatus("idle");
+        setLoading(true);
+      
+        await createUpzRun(upz);
+      
+        setListStatus("ok");
+      } catch (e) {
+        setListStatus("error");
+        setError(e?.message || "No se pudo generar el listado");
+      } finally {
+        setLoading(false);
+      }
+    };
   useEffect(() => {
     setListStatus("idle");
     setError("");
@@ -213,26 +212,69 @@ function Reportes() {
     await downloadNextBatch(upz);
   };
 
+  const handleDescargarTodos = async () => {
+    try {
+      setError("");
+      setLoading(true);
+
+      let currentRun = upzRuns[upz];
+
+      if (!currentRun) {
+        currentRun = await createUpzRun(upz);
+      }
+
+      const totalBatches = Math.ceil(currentRun.total / currentRun.size);
+
+      for (let batch = currentRun.nextBatch; batch < totalBatches; batch++) {
+
+        const url = new URL(`${API_BASE}/report/pdf-upz/${upz}`);
+        url.searchParams.set("runId", currentRun.runId);
+        url.searchParams.set("batch", String(batch));
+        url.searchParams.set("size", String(currentRun.size));
+
+        await downloadPdfOrAlert(url.toString(), upz);
+
+        setUpzRuns((prev) => ({
+          ...prev,
+          [upz]: {
+            ...prev[upz],
+            nextBatch: batch + 1
+          }
+        }));
+
+        await new Promise(r => setTimeout(r, 400)); // pequeña pausa para no saturar API
+      }
+
+    } catch (e) {
+      setError(e?.message || "Error descargando todos los lotes");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="smartolt-container">
-      <header className="dashboard-header">
-        <h1 className="dashboard-title">Reportes › Reportes por UPZ</h1>
+      <header className="dashboard-header1">
+        <div className="header-title-block">
+          <h1>
+            Reportes › Reportes por UPZ
+          </h1>
+          <p>Consulta, genera y descarga reportes por upz de ONUs.</p>
 
-        <div className="header-smart">
+        </div>
+        
+        <div className="header-actions1">
           <div className="dropdown-reportes">
-            <button className="btnReporte">Reportes ▾</button>
-
+            <button className="btn">Reportes▾</button>
             <div className="dropdown-reportes-menu">
               <button onClick={() => navigate("/reportes")}>Reporte por UPZ</button>
               <button onClick={() => navigate("/reporte-Upz-Meta")}>Reporte por Meta</button>
               <button onClick={() => navigate("/reporte-zona")}>Reporte por Zona</button>
-              <button onClick={() => navigate("/reporte-estado")}>
-                Reporte por Estado
-              </button>
+              <button onClick={() => navigate("/reporte-estado")}>Reporte por Estado</button>
             </div>
           </div>
 
-          <button className="btnVolver" onClick={menu}>
+          <button className="btn secondary" onClick={() => navigate(-1)}>
             Volver
           </button>
         </div>
@@ -291,16 +333,23 @@ function Reportes() {
 
             <div className="botonesGenerarReportUPZ">
               <button
-                className={`btnGnerarUpz btnStatus-${listStatus}`}
+                className={`btnGnerarUpz btnStatus-${loading ? "loading" : listStatus}`}
                 onClick={handleGenerarListado}
                 disabled={loading}
               >
-                Generar listado
+                {loading ? "Generando..." : "Generar listado"}
               </button>
 
 
               <button className="btnGnerarUpz"  onClick={handleDescargarLotes} disabled={loading}>
                 Descargar lotes
+              </button>
+              <button
+                className="btnGnerarUpz"
+                onClick={handleDescargarTodos}
+                disabled={loading}
+              >
+                Descargar todos
               </button>
 
               <button className="btnGnerarUpz" onClick={() => resetUpzRun(upz)} disabled={loading}>
@@ -313,7 +362,7 @@ function Reportes() {
 
             <div className="totalReportsUpz">
               <p>
-                Total ONUs: <b>{progreso.totalOnus || 0}</b> | Total Lotes: <b>{progreso.totalLotes || 0}</b>
+                Total ONUs encontradas: <b>{progreso.totalOnus || 0}</b> | Total Lotes: <b>{progreso.totalLotes || 0}</b>
               </p>
               {run && (
                 <p style={{ margin: 0, marginTop: 6 }}>
