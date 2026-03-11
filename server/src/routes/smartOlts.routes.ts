@@ -24,3 +24,6 @@ smartOltRouter.post("/report/pdf-zona/reset", controller.resetZonaRun);
 smartOltRouter.get("/report/pdf-health/run", controller.createHealthRun);
 smartOltRouter.get("/report/pdf-health", controller.exportHealthRun);
 smartOltRouter.post("/report/pdf-health/reset", controller.resetHealthRun);
+
+smartOltRouter.get("/report/stats", controller.reportStats)
+smartOltRouter.get("/report/stats-pdf", controller.reportStatsPdf)

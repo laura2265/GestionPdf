@@ -19,6 +19,7 @@ import { commentText,
 import { HttpError, isSmartOltHourlyLimit } from "./smartOlt.client.js"
 import { createRun, getRun, getExportedSet, markExported } from "../../utils/SmartOlt/runStore.js"
 import { mapLimit, sleep } from "../../utils/SmartOlt/concurrency.js"
+import { getCatalogWithMemoryFallback } from "./smartOlt.catalog.js"
 
 type GenerarPdfOpts={
     refresh?: boolean;
@@ -499,17 +500,8 @@ export async function createUpzCardsRun(opts: {
 }) {
   const { upz, refresh = false, onlyMintic = true } = opts;
 
-  const r = await client.getAllOnusDetails({ refresh });
-
-  if (!r.ok) {
-    const data = (r as any).data;
-    if (isSmartOltHourlyLimit(data)) {
-      throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", data);
-    }
-    throw new HttpError((r as any).status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", data);
-  }
-
-  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
+  const catalog = await getCatalogWithMemoryFallback({ refresh });
+  const onus = Array.isArray(catalog.onus) ? catalog.onus : [];
 
   let filtered = onus
     .filter((o: any) => (onlyMintic ? isMintic(o) : true))
@@ -720,47 +712,134 @@ export async function exportUpzCardsRun(opts: {
         <title>Reporte UPZ ${esc(upzTitle(upz))}</title>
         <style>
           *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
-          body{ margin:0; color:#111; }
-          .page{ padding:10mm; page-break-after: always; }
-          .page:last-child{ page-break-after: auto; }
+          body{ margin:0; color:#111; background:#f4f6f8; }
+          .page{
+            padding:6mm;
+            page-break-after: always;
+            min-height: 190mm;
+            display: flex;
+            flex-direction: column;
+          }
+          .page:last-child{ 
+            page-break-after: auto; 
+          }
+          .pageHead{
+            display:flex;
+            flex-direction:column;
+            gap:2px;
+            margin-bottom:3px;
+            flex: 0 0 auto;
+          }
+            .cards{
+              display:grid;
+              grid-template-rows: 1fr 1fr;
+              gap:5px;
+              flex: 1 1 auto;
+              min-height: 0;
+            }
+            .card{
+              border:1px solid #dfe5ea;
+              border-radius:14px;
+              padding:5px;
+              background:#fff;
+              box-shadow:0 1px 3px rgba(0,0,0,.05);
+              overflow:hidden;
+              min-height:0;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
 
-          .pageHead{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; }
-          h1{ margin:0; font-size:16px; }
+          h1{ margin:0; font-size:18px; font-weight:900; color:#123; }
           .meta{ font-size:10px; color:#555; }
-
-          .cards{ display:flex; flex-direction:column; gap:8px; }
-
-          .card{
-            border:1px solid #e5e7eb;
-            border-radius:12px;
-            padding:8px;
-            page-break-inside: avoid;
-            break-inside: avoid;
+          .head{
+            display:flex;
+            justify-content:space-between;
+            gap:10px;
+          }
+          .head{
+            display:flex;
+            justify-content:space-between;
+            gap:10px;
+          }
+          .sub{
+            margin-top:3px;
+            font-size:9px;
+            display:flex;
+            gap:6px;
+            align-items:center;
+            flex-wrap:wrap;
+          }
+          .comment{
+            margin-top:4px;
+            font-size:8px;
+            color:#111;
           }
 
-          .head{ display:flex; justify-content:space-between; gap:10px; }
-          .name{ font-size:12px; font-weight:800; }
-          .sub{ margin-top:2px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-          .comment{ margin-top:4px; font-size:10px; color:#111; }
-          .muted{ color:#666; font-size:10px; }
+          .muted{
+            color:#666;
+            font-size:10px;
+          }
 
-          .right{ min-width:180px; text-align:right; }
-          .idv{ font-weight:800; font-size:10px; word-break:break-all; }
+          .right{
+            min-width:150px;
+            text-align:right;
+          }
 
-          .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:9px; border:1px solid #ddd; }
-          .pill.online{ border-color:#2ecc71; color:#2ecc71; }
-          .pill.los{ border-color:#e74c3c; color:#e74c3c; }
-          .pill.pf{ border-color:#f1c40f; color:#f1c40f; }
-          .pill.unk{ border-color:#7f8c8d; color:#7f8c8d; }
+          .idv{
+            font-weight:800;
+            font-size:9px;
+            word-break:break-all;
+            color:#0f172a;
+          }
+          .pill{
+            display:inline-block;
+            padding:2px 8px;
+            border-radius:999px;
+            font-size:9px;
+            border:1px solid #ddd;
+            font-weight:700;
+            background:#fff;
+          }
 
-          .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
-          .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
-          .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
+          .pill.good{ border-color:#16a34a; color:#16a34a; }
+          .pill.warn{ border-color:#f1c40f; color:#f1c40f; }
+          .pill.bad{ border-color:#e74c3c; color:#e74c3c; }
+          .pill.pf{ border-color:#7f8c8d; color:#7f8c8d; }
+          .pill.los{ border-color:#c0392b; color:#c0392b; }
+          .pill.off{ border-color:#34495e; color:#34495e; }
+          .pill.unk{ border-color:#95a5a6; color:#95a5a6; }
+          .pill.upz{ border-color:#4b5563; color:#4b5563; }
+          .grid2{
+            margin-top:6px;
+            display:grid;
+            grid-template-columns: 1fr 1fr;
+            gap:4px;
+          }
 
-          img{ width:100%; height:auto; display:block; max-height:220px; object-fit:contain; }
+          .g{
+            border:1px solid #e5e7eb;
+            border-radius:10px;
+            padding:1px;
+            background:#fafafa;
+          }
 
+          .gt{
+            font-size:10px;
+            font-weight:800;
+            margin-bottom:2px;
+          }
+
+          img{
+            width:100%;
+            height:auto;
+            display:block;
+            max-height:175px;
+            object-fit:contain;
+            background:#fff;
+            border-radius:8px;
+          }
           .gempty{
-            min-height:170px;
+            min-height:110px;
             display:flex;
             align-items:center;
             justify-content:center;
@@ -865,17 +944,8 @@ export async function createUpzMetaRun(opts: {
   const fromD = parseDateStart(from);
   const toD = parseDateEnd(to);
 
-  const r = await client.getAllOnusDetails({ refresh });
-
-  if (!r.ok) {
-    const data = (r as any).data;
-    if (isSmartOltHourlyLimit(data)) {
-      throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", data);
-    }
-    throw new HttpError((r as any).status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", data);
-  }
-
-  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
+  const catalog = await getCatalogWithMemoryFallback({ refresh });
+  const onus = Array.isArray(catalog.onus) ? catalog.onus : [];
 
   const filtered = onus
     .filter((o: any) => (onlyMintic ? isMintic(o) : true))
@@ -1122,35 +1192,144 @@ export async function exportUpzMetaRun(opts: {
         <title>Reporte UPZ ${esc(upzLabel(runUpz))} - Meta ${esc(String(runMeta).toUpperCase())}</title>
         <style>
           *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
-          body{ margin:0; color:#111; }
-          .page{ padding:10mm; page-break-after: always; }
-          .page:last-child{ page-break-after: auto; }
-          .pageHead{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px; }
-          h1{ margin:0; font-size:16px; }
+          body{ margin:0; color:#111; background:#f4f6f8; }
+          .page{
+            padding:6mm;
+            page-break-after: always;
+            min-height: 190mm;
+            display: flex;
+            flex-direction: column;
+          }
+          .page:last-child{ 
+            page-break-after: auto; 
+          }
+          .pageHead{
+            display:flex;
+            flex-direction:column;
+            gap:2px;
+            margin-bottom:3px;
+            flex: 0 0 auto;
+          }
+            .cards{
+              display:grid;
+              grid-template-rows: 1fr 1fr;
+              gap:5px;
+              flex: 1 1 auto;
+              min-height: 0;
+            }
+            .card{
+              border:1px solid #dfe5ea;
+              border-radius:14px;
+              padding:5px;
+              background:#fff;
+              box-shadow:0 1px 3px rgba(0,0,0,.05);
+              overflow:hidden;
+              min-height:0;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+
+          h1{ margin:0; font-size:18px; font-weight:900; color:#123; }
           .meta{ font-size:10px; color:#555; }
-          .cards{ display:flex; flex-direction:column; gap:8px; }
-          .card{ border:1px solid #e5e7eb; border-radius:12px; padding:8px; page-break-inside: avoid; break-inside: avoid; }
-          .head{ display:flex; justify-content:space-between; gap:10px; }
-          .name{ font-size:12px; font-weight:800; }
-          .sub{ margin-top:2px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-          .comment{ margin-top:4px; font-size:10px; color:#111; }
-          .muted{ color:#666; font-size:10px; }
-          .right{ min-width:180px; text-align:right; }
-          .idv{ font-weight:800; font-size:10px; word-break:break-all; }
-          .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:9px; border:1px solid #ddd; }
-          .pill.online{ border-color:#2ecc71; color:#2ecc71; }
-          .pill.los{ border-color:#e74c3c; color:#e74c3c; }
-          .pill.pf{ border-color:#f1c40f; color:#f1c40f; }
-          .pill.unk{ border-color:#7f8c8d; color:#7f8c8d; }
-          .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
-          .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
-          .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
-          img{ width:100%; height:auto; display:block; max-height:220px; object-fit:contain; }
+          .head{
+            display:flex;
+            justify-content:space-between;
+            gap:10px;
+          }
+          .head{
+            display:flex;
+            justify-content:space-between;
+            gap:10px;
+          }
+          .sub{
+            margin-top:3px;
+            font-size:9px;
+            display:flex;
+            gap:6px;
+            align-items:center;
+            flex-wrap:wrap;
+          }
+          .comment{
+            margin-top:4px;
+            font-size:8px;
+            color:#111;
+          }
+
+          .muted{
+            color:#666;
+            font-size:10px;
+          }
+
+          .right{
+            min-width:150px;
+            text-align:right;
+          }
+
+          .idv{
+            font-weight:800;
+            font-size:9px;
+            word-break:break-all;
+            color:#0f172a;
+          }
+          .pill{
+            display:inline-block;
+            padding:2px 8px;
+            border-radius:999px;
+            font-size:9px;
+            border:1px solid #ddd;
+            font-weight:700;
+            background:#fff;
+          }
+
+          .pill.good{ border-color:#16a34a; color:#16a34a; }
+          .pill.warn{ border-color:#f1c40f; color:#f1c40f; }
+          .pill.bad{ border-color:#e74c3c; color:#e74c3c; }
+          .pill.pf{ border-color:#7f8c8d; color:#7f8c8d; }
+          .pill.los{ border-color:#c0392b; color:#c0392b; }
+          .pill.off{ border-color:#34495e; color:#34495e; }
+          .pill.unk{ border-color:#95a5a6; color:#95a5a6; }
+          .pill.upz{ border-color:#4b5563; color:#4b5563; }
+          .grid2{
+            margin-top:6px;
+            display:grid;
+            grid-template-columns: 1fr 1fr;
+            gap:4px;
+          }
+
+          .g{
+            border:1px solid #e5e7eb;
+            border-radius:10px;
+            padding:1px;
+            background:#fafafa;
+          }
+
+          .gt{
+            font-size:10px;
+            font-weight:800;
+            margin-bottom:2px;
+          }
+
+          img{
+            width:100%;
+            height:auto;
+            display:block;
+            max-height:175px;
+            object-fit:contain;
+            background:#fff;
+            border-radius:8px;
+          }
           .gempty{
-            min-height:170px;
-            display:flex; align-items:center; justify-content:center;
-            text-align:center; font-size:9px; color:#666;
-            border:1px dashed #ddd; border-radius:8px; padding:8px; background:#fafafa;
+            min-height:110px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            text-align:center;
+            font-size:9px;
+            color:#666;
+            border:1px dashed #ddd;
+            border-radius:8px;
+            padding:8px;
+            background:#fafafa;
           }
         </style>
       </head>
@@ -1222,25 +1401,8 @@ export async function createZonaRun(opts: {
     throw new HttpError(400, "Falta zona");
   }
 
-  const r = await client.getAllOnusDetails({ refresh });
-
-  if (!r.ok) {
-    const data = (r as any).data;
-    if (isSmartOltHourlyLimit(data)) {
-      throw new HttpError(
-        429,
-        "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.",
-        data
-      );
-    }
-    throw new HttpError(
-      (r as any).status ?? 503,
-      "Error consultando SmartOLT (get_all_onus_details).",
-      data
-    );
-  }
-
-  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
+  const catalog = await getCatalogWithMemoryFallback({ refresh });
+  const onus = Array.isArray(catalog.onus) ? catalog.onus : [];
 
   const key = zonaRunKey(zona, onlyMintic);
   const exported = refresh ? new Set<string>() : getExportedSet(key);
@@ -1471,36 +1633,144 @@ export async function exportZonaRun(opts: {
         <title>Reporte Zona ${esc(zonaNombre)}</title>
         <style>
           *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
-          body{ margin:0; color:#111; }
-          .page{ padding:10mm; page-break-after: always; }
-          .page:last-child{ page-break-after: auto; }
-          .pageHead{ display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
-          h1{ margin:0; font-size:16px; }
+          body{ margin:0; color:#111; background:#f4f6f8; }
+          .page{
+            padding:6mm;
+            page-break-after: always;
+            min-height: 190mm;
+            display: flex;
+            flex-direction: column;
+          }
+          .page:last-child{ 
+            page-break-after: auto; 
+          }
+          .pageHead{
+            display:flex;
+            flex-direction:column;
+            gap:2px;
+            margin-bottom:3px;
+            flex: 0 0 auto;
+          }
+            .cards{
+              display:grid;
+              grid-template-rows: 1fr 1fr;
+              gap:5px;
+              flex: 1 1 auto;
+              min-height: 0;
+            }
+            .card{
+              border:1px solid #dfe5ea;
+              border-radius:14px;
+              padding:5px;
+              background:#fff;
+              box-shadow:0 1px 3px rgba(0,0,0,.05);
+              overflow:hidden;
+              min-height:0;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+
+          h1{ margin:0; font-size:18px; font-weight:900; color:#123; }
           .meta{ font-size:10px; color:#555; }
-          .cards{ display:flex; flex-direction:column; gap:8px; }
-          .card{ border:1px solid #e5e7eb; border-radius:12px; padding:8px; page-break-inside: avoid; break-inside: avoid; }
-          .head{ display:flex; justify-content:space-between; gap:10px; }
-          .name{ font-size:12px; font-weight:800; }
-          .sub{ margin-top:2px; font-size:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-          .comment{ margin-top:4px; font-size:10px; color:#111; }
-          .muted{ color:#666; font-size:10px; }
-          .right{ min-width:180px; text-align:right; }
-          .idv{ font-weight:800; font-size:10px; word-break:break-all; }
-          .pill{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:9px; border:1px solid #ddd; }
-          .pill.online{ border-color:#2ecc71; color:#2ecc71; }
-          .pill.los{ border-color:#e74c3c; color:#e74c3c; }
-          .pill.pf{ border-color:#f1c40f; color:#f1c40f; }
-          .pill.unk{ border-color:#7f8c8d; color:#7f8c8d; }
+          .head{
+            display:flex;
+            justify-content:space-between;
+            gap:10px;
+          }
+          .head{
+            display:flex;
+            justify-content:space-between;
+            gap:10px;
+          }
+          .sub{
+            margin-top:3px;
+            font-size:9px;
+            display:flex;
+            gap:6px;
+            align-items:center;
+            flex-wrap:wrap;
+          }
+          .comment{
+            margin-top:4px;
+            font-size:8px;
+            color:#111;
+          }
+
+          .muted{
+            color:#666;
+            font-size:10px;
+          }
+
+          .right{
+            min-width:150px;
+            text-align:right;
+          }
+
+          .idv{
+            font-weight:800;
+            font-size:9px;
+            word-break:break-all;
+            color:#0f172a;
+          }
+          .pill{
+            display:inline-block;
+            padding:2px 8px;
+            border-radius:999px;
+            font-size:9px;
+            border:1px solid #ddd;
+            font-weight:700;
+            background:#fff;
+          }
+
+          .pill.good{ border-color:#16a34a; color:#16a34a; }
+          .pill.warn{ border-color:#f1c40f; color:#f1c40f; }
+          .pill.bad{ border-color:#e74c3c; color:#e74c3c; }
+          .pill.pf{ border-color:#7f8c8d; color:#7f8c8d; }
+          .pill.los{ border-color:#c0392b; color:#c0392b; }
+          .pill.off{ border-color:#34495e; color:#34495e; }
+          .pill.unk{ border-color:#95a5a6; color:#95a5a6; }
           .pill.upz{ border-color:#4b5563; color:#4b5563; }
-          .grid2{ margin-top:6px; display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
-          .g{ border:1px solid #e5e7eb; border-radius:10px; padding:6px; }
-          .gt{ font-size:10px; font-weight:800; margin-bottom:4px; }
-          img{ width:100%; height:auto; display:block; max-height:220px; object-fit:contain; }
+          .grid2{
+            margin-top:6px;
+            display:grid;
+            grid-template-columns: 1fr 1fr;
+            gap:4px;
+          }
+
+          .g{
+            border:1px solid #e5e7eb;
+            border-radius:10px;
+            padding:1px;
+            background:#fafafa;
+          }
+
+          .gt{
+            font-size:10px;
+            font-weight:800;
+            margin-bottom:2px;
+          }
+
+          img{
+            width:100%;
+            height:auto;
+            display:block;
+            max-height:175px;
+            object-fit:contain;
+            background:#fff;
+            border-radius:8px;
+          }
           .gempty{
-            min-height:170px;
-            display:flex; align-items:center; justify-content:center;
-            text-align:center; font-size:9px; color:#666;
-            border:1px dashed #ddd; border-radius:8px; padding:8px; background:#fafafa;
+            min-height:110px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            text-align:center;
+            font-size:9px;
+            color:#666;
+            border:1px dashed #ddd;
+            border-radius:8px;
+            padding:8px;
+            background:#fafafa;
           }
         </style>
       </head>
@@ -1584,17 +1854,8 @@ export async function createHealthRun(opts: {
     throw new HttpError(400, "Falta status");
   }
 
-  const r = await client.getAllOnusDetails({ refresh });
-
-  if (!r.ok) {
-    const data = (r as any).data;
-    if (isSmartOltHourlyLimit(data)) {
-      throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", data);
-    }
-    throw new HttpError((r as any).status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", data);
-  }
-
-  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
+  const catalog = await getCatalogWithMemoryFallback({ refresh });
+  const onus = Array.isArray(catalog.onus) ? catalog.onus : [];
 
   let filtered = onlyMintic ? onus.filter(isMintic) : onus;
   filtered = filtered.filter((o: any) => matchesHealthFilter(o, { status, signal }));
@@ -1820,7 +2081,7 @@ export async function exportHealthRun(opts: {
           *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
           body{ margin:0; color:#111; background:#f4f6f8; }
           .page{
-            padding:7mm;
+            padding:6mm;
             page-break-after: always;
             min-height: 190mm;
             display: flex;
@@ -1833,20 +2094,20 @@ export async function exportHealthRun(opts: {
             display:flex;
             flex-direction:column;
             gap:2px;
-            margin-bottom:5px;
+            margin-bottom:3px;
             flex: 0 0 auto;
           }
             .cards{
               display:grid;
               grid-template-rows: 1fr 1fr;
-              gap:8px;
+              gap:5px;
               flex: 1 1 auto;
               min-height: 0;
             }
             .card{
               border:1px solid #dfe5ea;
               border-radius:14px;
-              padding:8px;
+              padding:5px;
               background:#fff;
               box-shadow:0 1px 3px rgba(0,0,0,.05);
               overflow:hidden;
@@ -1939,7 +2200,7 @@ export async function exportHealthRun(opts: {
             width:100%;
             height:auto;
             display:block;
-            max-height:180px;
+            max-height:175px;
             object-fit:contain;
             background:#fff;
             border-radius:8px;

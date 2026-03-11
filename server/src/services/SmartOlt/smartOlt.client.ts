@@ -2,7 +2,7 @@ const tokenSmart = process.env.SMART_OLT_TOKEN;
 const baseUrl = "https://supertv.smartolt.com/api";
 
 //ttl y cache JSON
-const TTL_MS = 30 * 60 * 1000;
+const TTL_MS = 90 * 60 * 1000;
 type CacheEntry = { at: number; data: any };
 const cacheMap = new Map<string, CacheEntry>();
 

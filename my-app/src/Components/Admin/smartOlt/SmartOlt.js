@@ -4,13 +4,22 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ImConnection } from "react-icons/im";
 import { AiOutlineDisconnect } from "react-icons/ai";
 import { VscDebugDisconnect } from "react-icons/vsc";
-import Dropdown from 'react-bootstrap/Dropdown';
+import {
+  FiBarChart2,
+  FiMapPin,
+  FiTarget,
+  FiLayers,
+  FiActivity,
+  FiSearch,
+  FiFileText,
+  FiArrowRight,
+} from "react-icons/fi";
 
 function SmartOlt() {
   const navigate = useNavigate();
   const [openReportes, setOpenReportes] = useState(false);
   const reportesRef = useRef(null);
-  
+
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (reportesRef.current && !reportesRef.current.contains(e.target)) {
@@ -22,14 +31,9 @@ function SmartOlt() {
   }, []);
 
   const menu = () => navigate("/admin");
-  const cerrarSesion = () => {
-    localStorage.removeItem("auth");
-    window.location.href = "/";
-  };
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
   const [onus, setOnus] = useState([]);
 
   const [q, setQ] = useState("");
@@ -38,26 +42,6 @@ function SmartOlt() {
   const [fPort, setFPort] = useState("");
   const [fZone, setFZone] = useState("");
   const [fOdb, setFOdb] = useState("");
-
-
-
-  const API_BASE = "http://localhost:3000/api/smart-olt";
-
-  const [batchSize, setBatchSize] = useState(30);
-  const [upzRuns, setUpzRuns] = useState(() => {
-    try {
-      const raw = localStorage.getItem("upzRuns_v1");
-      return raw ? JSON.parse(raw) : { lucero: null, tesoro: null };
-    } catch {
-      return { lucero: null, tesoro: null };
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("upzRuns_v1", JSON.stringify(upzRuns));
-    } catch {}
-  }, [upzRuns]);
 
   useEffect(() => {
     const fetchSmartOlts = async () => {
@@ -75,11 +59,8 @@ function SmartOlt() {
           throw new Error(result?.message || "Error consultando SmartOLT");
         }
 
-        const list = result.items;
-        setOnus(list);
-        console.log(list)
+        setOnus(result.items || []);
       } catch (e) {
-        console.error("Error al consultar ONUs:", e);
         setError(e?.message || "Error inesperado");
       } finally {
         setLoading(false);
@@ -90,9 +71,16 @@ function SmartOlt() {
   }, []);
 
   const options = useMemo(() => {
-    const uniq = (arr) => Array.from(new Set(arr.filter((x) => x !== null && x !== undefined && String(x).trim() !== "")))
-      .map((x) => String(x))
-      .sort((a, b) => a.localeCompare(b));
+    const uniq = (arr) =>
+      Array.from(
+        new Set(
+          arr.filter(
+            (x) => x !== null && x !== undefined && String(x).trim() !== ""
+          )
+        )
+      )
+        .map((x) => String(x))
+        .sort((a, b) => a.localeCompare(b));
 
     return {
       olts: uniq(onus.map((o) => o?.olt_id ?? o?.olt_name)),
@@ -140,22 +128,73 @@ function SmartOlt() {
     });
   }, [onus, q, fOlt, fBoard, fPort, fZone, fOdb]);
 
+  const stats = useMemo(() => {
+    const online = filteredOnus.filter(
+      (o) => String(o?.status ?? "").toLowerCase() === "online"
+    ).length;
+
+    const los = filteredOnus.filter(
+      (o) => String(o?.status ?? "").toLowerCase() === "los"
+    ).length;
+
+    const powerFail = filteredOnus.filter((o) => {
+      const s = String(o?.status ?? "").toLowerCase();
+      return s.includes("power") && s.includes("fail");
+    }).length;
+
+    return {
+      total: filteredOnus.length,
+      online,
+      los,
+      powerFail,
+    };
+  }, [filteredOnus]);
+
+  const reportCards = [
+    {
+      title: "Reporte general",
+      description: "Exporta el consolidado completo de ONUs MINTIC.",
+      icon: <FiFileText />,
+      colorClass: "report-card-general",
+      action: () =>
+        window.open("http://localhost:3000/api/smart-olt/report/pdf", "_blank"),
+    },
+    {
+      title: "Reporte estadístico",
+      description: "Abre el consolidado estadístico en PDF.",
+      icon: <FiBarChart2 />,
+      colorClass: "report-card-stats",
+      action: () =>
+        window.open(
+          "http://localhost:3000/api/smart-olt/report/stats-pdf?mintic=true&refresh=true",
+          "_blank"
+        ),
+    },
+  ];
+
   const StatusIcon = ({ status }) => {
     if (!status) return null;
     switch (status.toLowerCase()) {
       case "online":
         return <ImConnection className="status-icon online" title="Online" />;
       case "power failed":
-        return <VscDebugDisconnect className="status-icon power-failed" title="Power Failed" />;
+        return (
+          <VscDebugDisconnect
+            className="status-icon power-failed"
+            title="Power Failed"
+          />
+        );
       case "los":
         return <AiOutlineDisconnect className="status-icon los" title="LOS" />;
       default:
-        return <VscDebugDisconnect className="status-icon unknown" title={status} />;
+        return (
+          <VscDebugDisconnect
+            className="status-icon unknown"
+            title={status}
+          />
+        );
     }
   };
-
-
-
 
   const generarReporteONU = (id) => {
     window.open(
@@ -166,68 +205,113 @@ function SmartOlt() {
 
   return (
     <div className="smartolt-container">
-      <header className="dashboard-header">
+      <header className="dashboard-header dashboard-header-modern">
         <div className="header-title-block">
+          <p className="smartolt-kicker">SMARTOLT · MÓDULO ADMIN</p>
           <h1>SmartOlt Configuradas</h1>
+          <p className="dashboard-subtitle">
+            Consulta ONUs MINTIC, filtra resultados y accede a todos los reportes
+            desde una sola vista.
+          </p>
         </div>
 
         <div className="header-actions1">
-          
-          <div className="dropdown-reportes">
-            <button className="btn">
-              Reportes▾
-            </button>
+          <div className="dropdown-reportes" ref={reportesRef}>
+            <button className="btn">Reportes▾</button>
             <div className="dropdown-reportes-menu">
-              <button onClick={() => navigate("/reportes")}>
-                Reporte por UPZ
+              <button onClick={() => window.open("http://localhost:3000/api/smart-olt/report/pdf", "_blank")}>
+                Reporte General
               </button>
-              <button onClick={() => navigate("/reporte-Upz-Meta")}>
-                Reporte por Meta
-              </button>
-              <button onClick={() => navigate("/reporte-zona")}>
-                Reporte por Zona
-              </button>
-              <button onClick={() => navigate("/reporte-estado")}>
-                Reporte por Estado
+              <button onClick={() => navigate("/reportes")}>Reporte por UPZ</button>
+              <button onClick={() => navigate("/reporte-Upz-Meta")}>Reporte por Meta</button>
+              <button onClick={() => navigate("/reporte-zona")}>Reporte por Zona</button>
+              <button onClick={() => navigate("/reporte-estado")}>Reporte por Estado</button>
+              <button
+                onClick={() =>
+                  window.open(
+                    "http://localhost:3000/api/smart-olt/report/stats-pdf?mintic=true&refresh=true",
+                    "_blank"
+                  )
+                }
+              >
+                Reporte por estadística
               </button>
             </div>
           </div>
 
-          <button
-            className="btn secondary"
-            onClick={() => {
-              const params = new URLSearchParams();
-              if (q.trim()) params.set("q", q.trim());
-
-              window.open(`http://localhost:3000/api/smart-olt/report/pdf`, "_blank");
-            }}
-          >
-            Generar PDF
-          </button>
-
-          
-          <button className="btn" onClick={menu}>
+          <button className="btn secondary" onClick={menu}>
             Volver
-          </button>      
-          
+          </button>
         </div>
       </header>
 
-      <div className="barraBusquedaOlt">
-        <label>Buscar</label>
-        <input
-          placeholder="IP, nombre, SN, comentario..."
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
+      <section className="smartolt-summary-grid">
+        <div className="smartolt-summary-card">
+          <span>Total ONUs filtradas</span>
+          <strong>{stats.total}</strong>
+        </div>
+        <div className="smartolt-summary-card">
+          <span>Online</span>
+          <strong>{stats.online}</strong>
+        </div>
+        <div className="smartolt-summary-card">
+          <span>LOS</span>
+          <strong>{stats.los}</strong>
+        </div>
+        <div className="smartolt-summary-card">
+          <span>Power Fail</span>
+          <strong>{stats.powerFail}</strong>
+        </div>
+      </section>
 
-        <label>Zona</label>
-        <select value={fZone} onChange={(e) => setFZone(e.target.value)}>
-          <option value="">Any</option>
-          {options.zones.map((v) => (
-            <option key={v} value={v}>{v}</option>
+      <section className="smartolt-report-center">
+        <div className="smartolt-report-center-head">
+          <div>
+            <h2>Centro de reportes</h2>
+            <p>Accede rápido a cada tipo de reporte del módulo.</p>
+          </div>
+        </div>
+
+        <div className="smartolt-report-grid">
+          {reportCards.map((card) => (
+            <article key={card.title} className={`smartolt-report-card ${card.colorClass}`}>
+              <div className="smart-report-content">
+                <div className="smartolt-report-icon">{card.icon}</div>
+                <div className="smartolt-report-body">
+                  <h3>{card.title}</h3>
+                  <p>{card.description}</p>
+                </div>
+              </div>
+              
+              <button className="smartolt-report-action" onClick={card.action}>
+                Abrir <FiArrowRight />
+              </button>
+            </article>
           ))}
-        </select>
+        </div>
+      </section>
+
+      <div className="barraBusquedaOlt barraBusquedaOlt-modern">
+        <div className="search-field">
+          <label>Buscar</label>
+          <input
+            placeholder="IP, nombre, SN, comentario..."
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+
+        <div className="search-field">
+          <label>Zona</label>
+          <select value={fZone} onChange={(e) => setFZone(e.target.value)}>
+            <option value="">Todas</option>
+            {options.zones.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <button
           className="botonLimpiar"
@@ -277,10 +361,12 @@ function SmartOlt() {
 
               return (
                 <tr className="celdas" key={o?.unique_external_id ?? o?.sn ?? `${o?.olt_id}`}>
-                  <td>{<StatusIcon status={o?.status}/>}</td>
+                  <td>
+                    <StatusIcon status={o?.status} />
+                  </td>
                   <td>{o?.name ?? "-"}</td>
                   <td>{o?.sn ?? "-"}</td>
-                  <td>{o.olt_name}</td>
+                  <td>{o?.olt_name}</td>
                   <td>{o?.zone_name ?? "-"}</td>
                   <td>{o?.odb_name ?? "-"}</td>
                   <td>{vlan || "-"}</td>
@@ -288,8 +374,14 @@ function SmartOlt() {
                   <td>{tv || "-"}</td>
                   <td>{o?.authorization_date ?? "-"}</td>
                   <td className="options">
-                    <button><Link className="ver"  to={`/smartolt-info-admin/${o?.unique_external_id}`}>ver</Link></button>
-                    <button className="btn" onClick={()=>generarReporteONU(o?.unique_external_id)}>Generar reporte</button>
+                    <button>
+                      <Link className="ver" to={`/smartolt-info-admin/${o?.unique_external_id}`}>
+                        ver
+                      </Link>
+                    </button>
+                    <button className="btn" onClick={() => generarReporteONU(o?.unique_external_id)}>
+                      Generar reporte
+                    </button>
                   </td>
                 </tr>
               );
@@ -308,7 +400,5 @@ function SmartOlt() {
     </div>
   );
 }
-
-
 
 export default SmartOlt;

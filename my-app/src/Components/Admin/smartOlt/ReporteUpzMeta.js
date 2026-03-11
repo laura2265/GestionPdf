@@ -7,7 +7,6 @@ async function downloadPdfOrAlert(url, upz, meta) {
   if (!res.ok || contentType.includes("application/json")) {
     const data = await res.json().catch(() => ({}));
     const msg = data?.message || `No se pudo generar el reporte (HTTP ${res.status})`;
-    alert(msg);
     throw new Error(msg);
   }
   const blob = await res.blob();
@@ -34,7 +33,7 @@ export default function ReportesUpzMeta() {
   const [toDate, setToDate] = useState("");
   const [onlyMintic, setOnlyMintic] = useState(true);
   const [refresh, setRefresh] = useState(true);
-
+  const [messageType, setMessageType] = useState("info");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [listStatus, setListStatus] = useState("idle"); 
@@ -135,7 +134,7 @@ export default function ReportesUpzMeta() {
 
   const handleGenerarListado = async () => {
     try {
-      setError("");
+      setError("Se genero el listado");
       setListStatus("idle");
       setLoading(true);
     
@@ -145,6 +144,7 @@ export default function ReportesUpzMeta() {
     } catch (e) {
       setListStatus("error");
       setError(e?.message || "No se pudo generar el listado");
+      setMessageType("error");
     } finally {
       setLoading(false);
     }
@@ -165,6 +165,7 @@ export default function ReportesUpzMeta() {
 
       if (currentRun.nextBatch >= totalBatches) {
         setError(`Ya descargaste todos los lotes de ${upzKey.toUpperCase()} ✅`);
+        setMessageType("success");
         return;
       }
 
@@ -181,6 +182,8 @@ export default function ReportesUpzMeta() {
         ...prev,
         [upzKey]: { ...prev[upzKey], nextBatch: prev[upzKey].nextBatch + 1 },
       }));
+      setError("Se descargo correctamente el lote");
+      setMessageType("success");
     } catch (e) {
       const msg = e?.message || "Error descargando lote";
 
@@ -189,6 +192,7 @@ export default function ReportesUpzMeta() {
       }
 
       setError(msg);
+      setMessageType("error");
     } finally {
       setLoading(false);
     }
@@ -213,8 +217,11 @@ export default function ReportesUpzMeta() {
       if (!res.ok) throw new Error(data?.message || "No se pudo resetear en backend");
 
       setRuns((prev) => ({ ...prev, [upzKey]: null }));
+      setError("Se reseteo corectamente")
+      setMessageType("success");
     } catch (e) {
       setError(e?.message || "Error en reset");
+      setMessageType("error");
     } finally {
       setLoading(false);
     }
@@ -224,37 +231,34 @@ export default function ReportesUpzMeta() {
     try {
       setError("");
       setLoading(true);
-
+    
       let currentRun = runs[upz];
-
+    
       if (!currentRun || filtrosCambiaron(currentRun)) {
         currentRun = await createRun(upz);
       }
-
+    
       const totalBatches = Math.ceil(currentRun.total / currentRun.size);
-
+    
       for (let batch = currentRun.nextBatch; batch < totalBatches; batch++) {
-
         const url = new URL(`${API_BASE}/report/pdf-upz-meta/${upz}`);
         url.searchParams.set("runId", currentRun.runId);
         url.searchParams.set("batch", String(batch));
         url.searchParams.set("size", String(currentRun.size));
         url.searchParams.set("refresh", refresh ? "true" : "false");
-
+      
         await downloadPdfOrAlert(url.toString(), upz, meta);
-
+      
         setRuns((prev) => ({
           ...prev,
           [upz]: {
             ...prev[upz],
-            nextBatch: batch + 1
-          }
+            nextBatch: batch + 1,
+          },
         }));
-
-        // pequeña pausa para no saturar la API
-        await new Promise(r => setTimeout(r, 400));
+      
+        await new Promise((r) => setTimeout(r, 400));
       }
-
     } catch (e) {
       setError(e?.message || "Error descargando todos los lotes");
     } finally {
@@ -292,105 +296,165 @@ export default function ReportesUpzMeta() {
       </header>
 
       <div className="ContentReporUpz">
-        <div className="reportUpz">
-        <div className="titleUpz">
-          <h2>Reporte por UPZ + Meta + Fechas</h2>
-        </div>
-
-        <div className="ContentConfigUpz">
-          <div className="UpzTipo">
-            <div className="botonTipoUpz">
-                <label className="meta-radio">
-                    <input 
-                        className="checkUpz"
-                        type="radio" 
-                        name="upz" 
-                        checked={upz === "lucero"} 
-                        onChange={() => setUpz("lucero")} 
-                    />
-                  Lucero
-                </label>
-            </div>
-            <div className="botonTipoUpz">
-                <label className="meta-radio">
-                    <input
-                        className="checkUpz" 
-                        type="radio" 
-                        name="upz" 
-                        checked={upz === "tesoro"} 
-                        onChange={() => setUpz("tesoro")} 
-                    />
-                  <span>Tesoro</span>
-                </label>
-            </div>
-
-          </div>
-          <div className="ContentLabelMeta">
-            <div className="contentOptionMeta">
-              <label>Meta</label>
-              <select value={meta} onChange={(e) => setMeta(e.target.value)}>
-                <option value="m1">M1</option>
-                <option value="m2">M2</option>
-                <option value="m3">M3</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="loteUpz">
-            <div className="lotebloqueado">
-              <label>Tamaño lote:</label>
-              <input value={BATCH_SIZE} disabled />
-              <small>Bloqueado a 100</small>
-            </div>
-          </div>
-
-          <div className="botonesGenerarReportUPZ">
-            <button
-                className={`btnGnerarUpz btnStatus-${loading ? "loading" : listStatus}`}
-                onClick={handleGenerarListado}
-                disabled={loading}
-              >
-                {loading ? "Generando..." : "Generar listado"}
-              </button>
-
-
-            <button className="btnGnerarUpz" onClick={handleDescargarLote} disabled={loading}>
-              Descargar siguiente lote
-            </button>
-            <button
-              className="btnGnerarUpz"
-              onClick={handleDescargarTodos}
-              disabled={loading}
-            >
-              Descargar todos
-            </button>
-
-            <button className="btnGnerarUpz" onClick={() => resetRun(upz)} disabled={loading}>
-              Reset {upz}
-            </button>
-
-          </div>  
-
-          {error && <p className="meta-error">{error}</p>}
-
-          <div className="totalReportsUpz">
+        <div className="reportUpz report-card-modern">
+          <div className="titleUpz titleUpz-modern">
+            <h2>Reportes por UPZ + Meta</h2>
             <p>
-              Total ONUs encontradas: <b>{progreso.totalOnus || 0}</b> | Total Lotes a generar: <b>{progreso.totalLotes || 0}</b>
+              Selecciona la UPZ y la meta, genera el listado y descarga los reportes
+              por lotes.
             </p>
+          </div>
 
-            {run && (
-              <p className="meta-progress">
-                Progreso: lote <b>{Math.min(progreso.nextBatch, progreso.totalLotes)}</b> de <b>{progreso.totalLotes}</b>
-              </p>
-            )}
-            {run?.runId && (
-              <p className="meta-runid">
-                runId: <code>{run.runId}</code>
-              </p>
-            )}
+          <div className="ContentConfigUpz ContentConfigUpz-modern">
+            <div className="report-section">
+              <h3 className="subtitleUpz">UPZ</h3>
+
+              <div className="upz-selector-grid">
+                <button
+                  type="button"
+                  className={`upz-select-card ${upz === "lucero" ? "active" : ""}`}
+                  onClick={() => setUpz("lucero")}
+                >
+                  <span className="upz-select-title">Lucero</span>
+                  <span className="upz-select-sub">UPZ seleccionable</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`upz-select-card ${upz === "tesoro" ? "active" : ""}`}
+                  onClick={() => setUpz("tesoro")}
+                >
+                  <span className="upz-select-title">Tesoro</span>
+                  <span className="upz-select-sub">UPZ seleccionable</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="report-section">
+              <h3 className="subtitleUpz">Meta</h3>
+
+              <div className="meta-selector-grid">
+                <button
+                  type="button"
+                  className={`meta-select-card ${meta === "m1" ? "active" : ""}`}
+                  onClick={() => setMeta("m1")}
+                >
+                  <span className="meta-select-title">M1</span>
+                  <span className="meta-select-sub">Meta 1</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`meta-select-card ${meta === "m2" ? "active" : ""}`}
+                  onClick={() => setMeta("m2")}
+                >
+                  <span className="meta-select-title">M2</span>
+                  <span className="meta-select-sub">Meta 2</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`meta-select-card ${meta === "m3" ? "active" : ""}`}
+                  onClick={() => setMeta("m3")}
+                >
+                  <span className="meta-select-title">M3</span>
+                  <span className="meta-select-sub">Meta 3</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="report-section">
+              <h3 className="subtitleUpz">Configuración</h3>
+
+              <div className="lote-card">
+                <div className="lote-card-labels">
+                  <span className="lote-card-title">Tamaño de lote</span>
+                  <small>Bloqueado a 100 registros por lote</small>
+                </div>
+
+                <div className="lote-card-value">
+                  <input type="number" value={BATCH_SIZE} disabled />
+                </div>
+              </div>
+            </div>
+
+            <div className="report-section">
+              <h3 className="subtitleUpz">Acciones</h3>
+
+              <div className="botonesGenerarReportUPZ botonesGenerarReportUPZ-modern">
+                <button
+                  className={`btnGnerarUpz btn-primary-report btnStatus-${loading ? "loading" : listStatus}`}
+                  onClick={handleGenerarListado}
+                  disabled={loading}
+                >
+                  {loading ? "Generando..." : "Generar listado"}
+                </button>
+
+                <button
+                  className="btnGnerarUpz btn-secondary-report"
+                  onClick={handleDescargarLote}
+                  disabled={loading}
+                >
+                  Descargar lote
+                </button>
+
+                <button
+                  className="btnGnerarUpz btn-secondary-report"
+                  onClick={handleDescargarTodos}
+                  disabled={loading}
+                >
+                  Descargar todos
+                </button>
+
+                <button
+                  className="btnGnerarUpz btn-danger-report"
+                  onClick={() => resetRun(upz)}
+                  disabled={loading}
+                >
+                  Reiniciar {upz}
+                </button>
+              </div>
+            </div>
+
+            {error && <div className="alert-run alert-error">{error}</div>}
+
+            <div className="totalReportsUpz totalReportsUpz-modern">
+              <div className="summary-item">
+                <span>UPZ</span>
+                <strong>{upz}</strong>
+              </div>
+
+              <div className="summary-item">
+                <span>Meta</span>
+                <strong>{meta.toUpperCase()}</strong>
+              </div>
+
+              <div className="summary-item">
+                <span>Total ONUs</span>
+                <strong>{progreso.totalOnus || 0}</strong>
+              </div>
+
+              <div className="summary-item">
+                <span>Total lotes</span>
+                <strong>{progreso.totalLotes || 0}</strong>
+              </div>
+
+              <div className="summary-item">
+                <span>Progreso</span>
+                <strong>
+                  {Math.min(progreso.nextBatch, progreso.totalLotes)} / {progreso.totalLotes}
+                </strong>
+              </div>
+
+              {run?.runId && (
+                <div className="summary-item summary-item-wide">
+                  <span>RunId</span>
+                  <strong>{run.runId}</strong>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
       </div>
       
     </div>

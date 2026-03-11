@@ -34,7 +34,7 @@ function ReporteEstado() {
   const [loadingDownload, setLoadingDownload] = useState(false);
   const [loadingAll, setLoadingAll] = useState(false);
   const [loadingReset, setLoadingReset] = useState(false);
-
+  const [messageType, setMessageType] = useState("info"); 
   const [message, setMessage] = useState("");
 
   const needsSignal = status === "online";
@@ -107,9 +107,11 @@ function ReporteEstado() {
       setTotalLotes(data.totalLotes || Math.ceil((data.total || 0) / 100));
       setLoteActual(0);
 
+      setMessageType("success");
       setMessage(`Run creado correctamente. Total pendientes: ${data.total || 0}`);
     } catch (err) {
       setMessage(err.message || "Error creando el run");
+      setMessageType("error");
     } finally {
       setLoadingRun(false);
     }
@@ -121,27 +123,43 @@ function ReporteEstado() {
         setMessage("Primero debes generar el run");
         return;
       }
-
+    
+      if (loteActual >= totalLotes) {
+        setMessage("Ya no hay más lotes por descargar");
+        setMessageType("success");
+        return;
+      }
+    
       setLoadingDownload(true);
       setMessage("");
-
-      const resp = await fetch(buildDownloadUrl(loteActual));
-
+    
+      // congelar el lote actual para que no cambie durante la descarga
+      const currentBatch = loteActual;
+    
+      const resp = await fetch(buildDownloadUrl(currentBatch));
       const contentType = resp.headers.get("content-type") || "";
-
+    
       if (!resp.ok) {
         const data = contentType.includes("application/json")
           ? await resp.json()
           : null;
         throw new Error(data?.message || "No se pudo descargar el lote");
       }
-
+    
       const blob = await resp.blob();
-      downloadBlob(blob, fileNameForBatch(loteActual));
-
-      setMessage(`Lote ${loteActual} descargado correctamente`);
+      downloadBlob(blob, fileNameForBatch(currentBatch));
+    
+      // avanzar automáticamente al siguiente lote
+      setLoteActual((prev) => {
+        const next = prev + 1;
+        return next >= totalLotes ? totalLotes : next;
+      });
+    
+      setMessage(`Lote ${currentBatch + 1} descargado correctamente`);
+      setMessageType("success");
     } catch (err) {
       setMessage(err.message || "Error descargando el lote");
+      setMessageType("error");
     } finally {
       setLoadingDownload(false);
     }
@@ -180,8 +198,10 @@ function ReporteEstado() {
       }
 
       setMessage("Todos los lotes fueron descargados");
+      setMessageType("success");
     } catch (err) {
       setMessage(err.message || "Error descargando todos los lotes");
+      setMessageType("error");
     } finally {
       setLoadingAll(false);
     }
@@ -207,8 +227,10 @@ function ReporteEstado() {
       setTotalLotes(0);
       setLoteActual(0);
       setMessage("Reset aplicado correctamente");
+      setMessageType("success");
     } catch (err) {
       setMessage(err.message || "Error haciendo reset");
+      setMessageType("error");
     } finally {
       setLoadingReset(false);
     }
@@ -311,9 +333,9 @@ function ReporteEstado() {
               <button
                 className="btnGnerarUpz"
                 onClick={handleDownloadBatch}
-                disabled={!runId || loadingDownload}
+                disabled={!runId || loadingDownload || loteActual >= totalLotes}
               >
-                {loadingDownload ? "Descargando..." : "Descargar"}
+                {loadingDownload ? "Descargando..." : `Descargar ${loteActual}`}
               </button>
 
               <button
@@ -351,7 +373,7 @@ function ReporteEstado() {
               </p>
 
               {message && (
-                <p className="alert-run">
+                <p className={`alert-run alert-${messageType}`}>
                   <b>{message}</b>
                 </p>
               )}

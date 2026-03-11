@@ -25,6 +25,8 @@ function ReporteZona() {
   const [loadingReset, setLoadingReset] = useState(false);
 
   const [error, setError] = useState("");
+  const [messageType, setMessageType] = useState("info");
+  const [message, setMessage] = useState("");
 
   const loteSize = 100;
 
@@ -44,6 +46,7 @@ function ReporteZona() {
       setZonas(uniqueNames);
     } catch (e) {
       console.error(e);
+      setMessageType("error");
       setError("No se pudieron cargar las zonas.");
       setZonas([]);
     } finally {
@@ -74,6 +77,7 @@ function ReporteZona() {
   const handleGenerarListado = async () => {
     if (!selectedZona) {
       setError("Selecciona una zona primero.");
+      
       return;
     }
 
@@ -101,8 +105,11 @@ function ReporteZona() {
       setPendientes(pendientesApi);
       setTotalLotes(lotes);
       setGeneradas(0);
+      setError("El run fue generado correctamente");
+      setMessageType("success");
     } catch (e) {
       console.error(e);
+      setMessageType("error");
       setError("No se pudo generar el listado (run). Revisa la ruta y la respuesta del back.");
       setRunId(null);
       setTotalOnus(0);
@@ -129,6 +136,7 @@ function ReporteZona() {
 
     if (batchActual >= totalLotes) {
       setError("Ya descargaste todos los lotes.");
+      setMessageType("success");
       return;
     }
 
@@ -150,6 +158,7 @@ function ReporteZona() {
       setBatchActual((prev) => prev + 1);
     } catch (e) {
       console.error(e);
+      setMessageType("error");
       setError("No se pudo descargar el lote. Revisa el endpoint /report/pdf-zona.");
     } finally {
       setLoadingDownload(false);
@@ -164,6 +173,7 @@ function ReporteZona() {
 
     if (!totalLotes) {
       setError("No hay lotes para descargar.");
+      setMessageType("error");
       return;
     }
 
@@ -182,6 +192,7 @@ function ReporteZona() {
       }
     } catch (e) {
       console.error(e);
+      setMessageType("error");
       setError("Falló la descarga de uno de los lotes. Revisa consola / Network.");
     } finally {
       setLoadingDownload(false);
@@ -207,9 +218,12 @@ function ReporteZona() {
       setTotalOnus(0);
       setTotalLotes(0);
       setBatchActual(0);
+      setError("Se ha reseteado correctamente");
+      setMessageType("success");
     } catch (e) {
       console.error(e);
       setError("No se pudo resetear. Revisa el endpoint /reset.");
+      setMessageType("error");
     } finally {
       setLoadingReset(false);
     }
@@ -265,7 +279,6 @@ function ReporteZona() {
               </select>
             </div>
 
-            {error ? <p style={{ color: "red", marginTop: 8 }}>{error}</p> : null}
 
             <div className="loteUpz">
               <div className="lotebloqueado">
@@ -308,6 +321,11 @@ function ReporteZona() {
               <p>
                 Total Lotes de lotes a generar: <b>{runId ? totalLotes : "-"}</b> | Lote actual: <b>{batchActual}</b>
               </p>
+              {error && (
+                <p className={`alert-run alert-${messageType}`}>
+                  <b>{error}</b>
+                </p>
+              )}
             </div>
 
           </div>

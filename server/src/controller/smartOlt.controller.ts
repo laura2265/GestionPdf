@@ -470,3 +470,49 @@ export async function resetHealthRun(req, res, next) {
     next(e);
   }
 }
+
+// reporte con graficas
+
+export async function reportStats(req, res, next) {
+  try{
+    const refresh = toBool(req.query.refresh);
+    const onlyMintic = String(req.query.mintic ?? "true").toLowerCase() === "true"
+    const data = await service.getStatsReport({
+      refresh, 
+      onlyMintic,
+    });
+
+    return res.json({
+      status: true,
+      ...data,
+    });
+  }catch(e){
+    next(e)
+  }
+}
+
+export async function reportStatsPdf(req, res, next) {
+  try {
+
+    const refresh = req.query.refresh === "false";
+    const onlyMintic = req.query.mintic !== "false";
+
+    const out = await report.generateStatsPdf({
+      refresh,
+      onlyMintic
+    });
+
+    const pdfBuffer = Buffer.isBuffer(out.pdf)
+      ? out.pdf
+      : Buffer.from(out.pdf);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", 'attachment; filename="reporte-estadistico-smartolt.pdf"');
+    res.setHeader("Content-Length", pdfBuffer.length);
+
+    return res.end(pdfBuffer);
+
+  } catch (e) {
+    next(e);
+  }
+}
