@@ -10,7 +10,7 @@ type CatalogState={
     lastError: any | null;
 };
 
-const CATALOG_TTL_MS = 30 * 60 * 1000;
+const CATALOG_TTL_MS = 60 * 60 * 1000;
 const LIMIT_COOLDOWN_MS = 15 * 60 * 1000;
 
 const catalogState: CatalogState = {

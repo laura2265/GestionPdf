@@ -268,3 +268,42 @@ export async function getOnuTrafficGraphDataUrl(id: string, tipo: string) {
   const url = `${baseUrl}/onu/get_onu_traffic_graph/${encodeURIComponent(id)}/${encodeURIComponent(tipo)}`;
   return fetchGraphAsDataUrl(url, `traffic:${id}:${tipo}`);
 }
+
+export async function getOltUplinkPortsDetails(id: string | number) {
+  const url = `${baseUrl}/system/get_olt_uplink_ports_details/${encodeURIComponent(String(id))}`;
+
+  try {
+    const resp = await fetch(url, {
+      method: "GET",
+      headers: {
+        "X-Token": tokenSmart ?? "",
+        Accept: "application/json",
+      },
+    });
+
+    const data = await resp.json().catch(() => ({}));
+
+    if (!resp.ok) {
+      return {
+        ok: false,
+        status: resp.status,
+        data,
+      };
+    }
+
+    return {
+      ok: true,
+      status: resp.status,
+      response: Array.isArray(data?.response) ? data.response : [],
+      data,
+    };
+  } catch (error: any) {
+    return {
+      ok: false,
+      status: 503,
+      data: {
+        message: String(error?.message ?? error),
+      },
+    };
+  }
+}

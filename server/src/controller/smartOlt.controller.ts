@@ -516,3 +516,67 @@ export async function reportStatsPdf(req, res, next) {
     next(e);
   }
 }
+
+//----------------------reporte por uplink----------
+export async function getUplinkDetails(req: any, res: any, next: any) {
+  try{
+    const{ id } = req.params;
+    const data = await client.getOltUplinkPortsDetails({id})
+
+    res.status(200).json({
+      ok: true,
+      data: data
+    })
+
+  }catch(error){
+    next(error)
+  }
+}
+
+export async function createUplinkVlanRun(req:any, res: any, next: any) {
+  try{
+    const data = await report.createUplinkVlanRun({
+      oltId: req.body.oltId ?? req.query.oltId,
+      vlan: req.body.vlan ?? req.query.vlan,
+      refresh: String(req.body?.refresh ?? req.query.refresh??"false").toLowerCase() === "true",
+    })
+    return res.json({
+      ok: true,
+      ...data,
+    });
+  }catch(error){
+    next(error)
+  }
+}
+export async function exportUplinkVlanRun(req:any, res:any, next:any) {
+  try{
+    const data = await report.exportUplinkVlanRun({
+      runId: req.query?.runId ?? req.params?.runId,
+      batch: req.query?.batch != null ? Number(req.query.batch):0,
+      size: req.query?.size != null? Number(req.query.size): 100,
+    });
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `inline; filename="${data.filename}"`);
+
+    return res.send(data.pdf);
+  }catch(error){
+    next(error);
+  }
+}
+
+
+export async function resetUplinkVlanRun(req:any, res:any, next:any) {
+  try{
+    const data = await report.resetUplinkVlanRun({
+      oltId: req.body?.oltId ?? req.query?.oltId,
+      vlan: req.body?.vlan ?? req.query?.vlan,
+    })
+
+    return res.json({
+      ok: true,
+      ...data,
+    })
+  }catch(error){
+    next(error);
+  }
+}

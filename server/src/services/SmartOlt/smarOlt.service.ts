@@ -151,6 +151,10 @@ export async function getStatsReport(opts: StatsOpts = {}) {
     tesoro: 0,
     otro: 0,
   };
+  const byMetaUpz: Record<string, Record<string, number>> ={
+    lucero: { m1: 0, m2: 0, m3: 0, none: 0 },
+    tesoro: { m1: 0, m2: 0, m3: 0, none: 0 },
+  }
 
   const byMeta: Record<string, number> = {
     m1: 0,
@@ -176,11 +180,14 @@ export async function getStatsReport(opts: StatsOpts = {}) {
   };
 
   for (const o of onus) {
+    const upz = upzOf(o);
+    const meta = metaOf(o);
     inc(byUpz, upzOf(o));
     inc(byMeta, metaOf(o));
     inc(byZona, zonaOf(o) || "SIN_ZONA");
     inc(byEstado, normalizeStatus(o?.status));
     inc(bySignal, normalizeSignal(o?.signal));
+    byMetaUpz[upz][meta] = (byMetaUpz[upz][meta] ?? 0) + 1;
   }
 
   const zonasOrdenadas = Object.entries(byZona)
@@ -193,6 +200,7 @@ export async function getStatsReport(opts: StatsOpts = {}) {
     totalAnalizado: onus.length,
     byUpz,
     byMeta,
+    byMetaUpz,
     byZona,
     zonasOrdenadas,
     byEstado,

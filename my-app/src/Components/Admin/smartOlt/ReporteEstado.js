@@ -110,6 +110,7 @@ function ReporteEstado() {
       setMessageType("success");
       setMessage(`Run creado correctamente. Total pendientes: ${data.total || 0}`);
     } catch (err) {
+      setListStatus("error")
       setMessage(err.message || "Error creando el run");
       setMessageType("error");
     } finally {
@@ -240,13 +241,10 @@ function ReporteEstado() {
     <div className="smartolt-container">
       <header className="dashboard-header1">
         <div className="header-title-block">
-          <h1>
-            Reportes › Reportes por Estado
-          </h1>
+          <h1>Reportes › Reportes por Estado</h1>
           <p>Consulta, genera y descarga reportes por estado de ONUs.</p>
-
         </div>
-        
+
         <div className="header-actions1">
           <div className="dropdown-reportes">
             <button className="btn">Reportes▾</button>
@@ -265,20 +263,25 @@ function ReporteEstado() {
       </header>
 
       <div className="ContentReporUpz">
-        <div className="reportUpz">
-          <div className="titleUpz">
+        <div className="reportUpz report-card-modern">
+          <div className="titleUpz titleUpz-modern">
             <h2>Reportes por Estado</h2>
+            <p>
+              Selecciona el estado de las ONUs, define la calidad de señal cuando
+              aplique y descarga los reportes generados por lotes.
+            </p>
           </div>
 
-          <div className="ContentConfigUpz">
-            <h2 className="subtitleUpz">Estado:</h2>
+          <div className="ContentConfigUpz ContentConfigUpz-modern">
+            <div className="report-section">
+              <h3 className="subtitleUpz">Estado</h3>
 
-            <div className="buttonStatus">
-              {STATUS_OPTIONS.map((opt) => (
-                <div className="UpzTipo" key={opt.value}>
+              <div className="status-selector-grid">
+                {STATUS_OPTIONS.map((opt) => (
                   <button
+                    key={opt.value}
                     type="button"
-                    className={`botonTipoUpz2 ${status === opt.value ? "active" : ""}`}
+                    className={`status-select-card ${status === opt.value ? "active" : ""}`}
                     onClick={() => {
                       setStatus(opt.value);
                       if (opt.value !== "online") {
@@ -288,95 +291,122 @@ function ReporteEstado() {
                       }
                     }}
                   >
-                    {opt.label}
+                    <span className="status-select-title">{opt.label}</span>
+                    <span className="status-select-sub">Filtro de estado</span>
                   </button>
-                </div>
-              ))}
-            </div>
-
-            {needsSignal && (
-              <>
-                <h2 className="subtitleUpz">Señal:</h2>
-                <div className="buttonStatus">
-                  {SIGNAL_OPTIONS.map((opt) => (
-                    <div className="UpzTipo" key={opt.value}>
-                      <button
-                        type="button"
-                        className={`botonTipoUpz2 ${signal === opt.value ? "active" : ""}`}
-                        onClick={() => setSignal(opt.value)}
-                      >
-                        {opt.label}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            <div className="loteUpz">
-              <div className="lotebloqueado">
-                <label>Tamaño lote:</label>
-                <input type="number" value="100" disabled />
-                <small>Bloqueado a 100</small>
+                ))}
               </div>
             </div>
 
-            <div className="botonesGenerarReportUPZ">
-              <button
-                className={`btnGnerarUpz btnStatus-${loadingRun ? "loading" : listStatus}`}
-                onClick={handleGenerateRun}
-                disabled={loadingRun}
-              >
-                {loadingRun ? "Generando..." : "Generar listado"}
-              </button>
+            {needsSignal && (
+              <div className="report-section">
+                <h3 className="subtitleUpz">Señal</h3>
 
-              <button
-                className="btnGnerarUpz"
-                onClick={handleDownloadBatch}
-                disabled={!runId || loadingDownload || loteActual >= totalLotes}
-              >
-                {loadingDownload ? "Descargando..." : `Descargar ${loteActual}`}
-              </button>
+                <div className="signal-selector-grid">
+                  {SIGNAL_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`signal-select-card ${signal === opt.value ? "active" : ""}`}
+                      onClick={() => setSignal(opt.value)}
+                    >
+                      <span className="signal-select-title">{opt.label}</span>
+                      <span className="signal-select-sub">Calidad de señal</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
-              <button
-                className="btnGnerarUpz"
-                onClick={handleDownloadAll}
-                disabled={!runId || loadingAll}
-              >
-                {loadingAll ? "Descargando todos..." : "Descargar todos"}
-              </button>
+            <div className="report-section">
+              <h3 className="subtitleUpz">Configuración</h3>
 
-              <button
-                className="btnGnerarUpz"
-                onClick={handleReset}
-                disabled={loadingReset}
-              >
-                {loadingReset ? "Reseteando..." : "Reset"}
-              </button>
+              <div className="lote-card">
+                <div className="lote-card-labels">
+                  <span className="lote-card-title">Tamaño de lote</span>
+                  <small>Bloqueado a 100 registros por lote</small>
+                </div>
+
+                <div className="lote-card-value">
+                  <input type="number" value="100" disabled />
+                </div>
+              </div>
             </div>
 
-            <div className="totalReportsUpz">
-              <p>
-                RunId: <b>{runId || "-"}</b>
-              </p>
+            <div className="report-section">
+              <h3 className="subtitleUpz">Acciones</h3>
 
-              <p>
-                Filtro:{" "}
-                <b>
-                  {status}
-                  {effectiveSignal ? ` + ${effectiveSignal}` : ""}
-                </b>
-              </p>
+              <div className="botonesGenerarReportUPZ botonesGenerarReportUPZ-modern">
+                <button
+                  className={`btnGnerarUpz btn-primary-report btnStatus-${loadingRun ? "loading" : listStatus}`}
+                  onClick={handleGenerateRun}
+                  disabled={loadingRun}
+                >
+                  {loadingRun ? "Generando..." : "Generar listado"}
+                </button>
 
-              <p>
-                Total Lotes a generar: <b>{totalLotes}</b> | Lote actual: <b>{loteActual}</b> | Total pendientes: <b>{total}</b>
-              </p>
+                <button
+                  className="btnGnerarUpz btn-secondary-report"
+                  onClick={handleDownloadBatch}
+                  disabled={!runId || loadingDownload || loteActual >= totalLotes}
+                >
+                  {loadingDownload ? "Descargando..." : `Descargar lote ${loteActual + 1}`}
+                </button>
 
-              {message && (
-                <p className={`alert-run alert-${messageType}`}>
-                  <b>{message}</b>
-                </p>
-              )}
+                <button
+                  className="btnGnerarUpz btn-secondary-report"
+                  onClick={handleDownloadAll}
+                  disabled={!runId || loadingAll}
+                >
+                  {loadingAll ? "Descargando todos..." : "Descargar todos"}
+                </button>
+
+                <button
+                  className="btnGnerarUpz btn-danger-report"
+                  onClick={handleReset}
+                  disabled={loadingReset}
+                >
+                  {loadingReset ? "Reseteando..." : "Reset"}
+                </button>
+              </div>
+            </div>
+
+            {message && (
+              <div className={`alert-run alert-${messageType || "info"}`}>
+                <b>{message}</b>
+              </div>
+            )}
+
+            <div className="totalReportsUpz totalReportsUpz-modern">
+              <div className="summary-item">
+                <span>Estado</span>
+                <strong>{status || "-"}</strong>
+              </div>
+
+              <div className="summary-item">
+                <span>Señal</span>
+                <strong>{effectiveSignal || "-"}</strong>
+              </div>
+
+              <div className="summary-item">
+                <span>Total pendientes</span>
+                <strong>{total}</strong>
+              </div>
+
+              <div className="summary-item">
+                <span>Total lotes</span>
+                <strong>{totalLotes}</strong>
+              </div>
+
+              <div className="summary-item">
+                <span>Lote actual</span>
+                <strong>{loteActual}</strong>
+              </div>
+
+              <div className="summary-item summary-item-wide">
+                <span>RunId</span>
+                <strong>{runId || "-"}</strong>
+              </div>
             </div>
           </div>
         </div>

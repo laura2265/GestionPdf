@@ -20,6 +20,8 @@ import { HttpError, isSmartOltHourlyLimit } from "./smartOlt.client.js"
 import { createRun, getRun, getExportedSet, markExported } from "../../utils/SmartOlt/runStore.js"
 import { mapLimit, sleep } from "../../utils/SmartOlt/concurrency.js"
 import { getCatalogWithMemoryFallback } from "./smartOlt.catalog.js"
+import { getMonthlyGraphCached } from "./smartOlt.graph.js"
+import { string } from "zod"
 
 type GenerarPdfOpts={
     refresh?: boolean;
@@ -86,7 +88,7 @@ export async function generateGeneralMinticPdf(opts: GenerarPdfOpts={}) {
 
     const lucero = filtered.filter((o:any)=>upzOf(o) === "lucero");
     const tesoro = filtered.filter((o:any)=>upzOf(o) === "tesoro");
-    const otras = filtered.filter((o:any)=>upzOf(o) === "otro");
+    
 
     const PAGE_SIZE = 2000;
     const now = new Date();
@@ -114,7 +116,7 @@ export async function generateGeneralMinticPdf(opts: GenerarPdfOpts={}) {
                 <td>${esc(o?.onu_signal_value ?? o?.signal_1310 ?? "-")}</td>
                 <td>${esc(o?.authorization_date ?? "-")}</td>
                 <td>${esc(commentText(o) || "-")}</td>
-                <td>${upzOf(o)==="lucero"?"Lucero": upzOf(o) === "tesoro" ? "Tesoro": "Otras"}</td>
+                <td>${upzOf(o)==="lucero"?"Lucero": upzOf(o) === "tesoro" ? "Tesoro": ""}</td>
             </tr>
         `
     };
@@ -207,8 +209,7 @@ export async function generateGeneralMinticPdf(opts: GenerarPdfOpts={}) {
                 <div class="table-wrap">
                   ${renderSection("UPZ Lucero (MINTIC LF3GRP1)", lucero)}
                   ${renderSection("UPZ Tesoro (MINTIC LF3GRP2)", tesoro)}
-                  ${otras.length ? renderSection("Otras (MINTIC sin LF3GRP1/2)", otras) : ""}
-                </div>
+                 </div>
 
                 <div class="foot">
                   Nota: se organizan por UPZ según el comentario/address (LF3GRP1=Lucero, LF3GRP2=Tesoro).
@@ -315,9 +316,9 @@ export async function generateOnuPdf(id: string, opts: { refresh?: boolean } = {
     throw new HttpError(404, "ONU no encontrada");
   }
 
-  const signal = await client.getOnuSignalGraphDataUrl(id, "monthly");
-  const trafico = await client.getOnuTrafficGraphDataUrl(id, "monthly");
-
+  const signal = await getMonthlyGraphCached(id, "signal_monthly", { forceRefresh: refresh });
+  const trafico = await getMonthlyGraphCached(id, "traffic_monthly", { forceRefresh: refresh });
+  
   const serviceUser = String(onu?.name ?? id).trim();
   const fullName = humanizeService(serviceUser);
   const upz = upzLabel(onu);
@@ -539,7 +540,34 @@ export async function createUpzCardsRun(opts: {
     );
   }
 
-  const run = createRun("upz", key, ids, 2 * 60 * 60 * 1000);
+    const itemsById = Object.fromEntries(
+    filtered
+      .filter((o: any) => ids.includes(String(getExternalId(o))))
+      .map((o: any) => {
+        const id = String(getExternalId(o));
+        return [
+          id,
+          {
+            unique_external_id: id,
+            name: String(o?.name ?? ""),
+            status: String(o?.status ?? ""),
+            olt_name: String(o?.olt_name ?? o?.olt_id ?? ""),
+            catv: String(o?.catv ?? ""),
+            zone_name: String(o?.zone_name ?? ""),
+            comment: String(commentText(o) ?? ""),
+            authorization_date: String(o?.authorization_date ?? ""),
+          },
+        ];
+      })
+  );
+
+  const run = createRun(
+    "upz",
+    key,
+    ids,
+    2 * 60 * 60 * 1000,
+    { itemsById }
+  );
 
   return {
     runId: run.runId,
@@ -582,27 +610,15 @@ export async function exportUpzCardsRun(opts: {
     throw new HttpError(404, "Lote vacío (probablemente ya descargaste todo)");
   }
 
-  const r = await client.getAllOnusDetails({ refresh });
-  if (!r.ok) {
-    const data = (r as any).data;
-    if (isSmartOltHourlyLimit(data)) {
-      throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", data);
-    }
-    throw new HttpError((r as any).status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", data);
+  if (!run.itemsById) {
+    throw new HttpError(400, "El run no tiene snapshot itemsById");
   }
 
-  const allOnus = Array.isArray((r as any).onus) ? (r as any).onus : [];
-
-  const byId = new Map<string, any>();
-  for (const o of allOnus) {
-    const id = getExternalId(o);
-    if (id) byId.set(id, o);
-  }
-
-  const list = idsBatch.map((id) => byId.get(id)).filter(Boolean);
-
-  type Job = { kind: "signal" | "trafico"; id: string };
-  const jobs: Job[] = [];
+  const list = idsBatch
+    .map((id) => run.itemsById?.[id])
+    .filter(Boolean);
+    type Job = { kind: "signal" | "trafico"; id: string };
+    const jobs: Job[] = [];
 
   for (const o of list) {
     const id = getExternalId(o);
@@ -614,16 +630,16 @@ export async function exportUpzCardsRun(opts: {
   const graphMap = new Map<string, { signal?: any; trafico?: any }>();
   let smartOltLimitReached = false;
 
-  await mapLimit(jobs, 2, async (job) => {
+  await mapLimit(jobs, 1, async (job) => {
     if (smartOltLimitReached) return;
 
-    await sleep(120);
+    await sleep(250);
 
     try {
       const img =
         job.kind === "signal"
-          ? await client.getOnuSignalGraphDataUrl(job.id, "monthly")
-          : await client.getOnuTrafficGraphDataUrl(job.id, "monthly");
+          ? await getMonthlyGraphCached(job.id, "signal_monthly", { forceRefresh: refresh })
+          : await getMonthlyGraphCached(job.id, "traffic_monthly", { forceRefresh: refresh });
 
       const raw = JSON.stringify(img ?? {}).toLowerCase();
       if (raw.includes("hourly limit")) {
@@ -1005,7 +1021,35 @@ export async function createUpzMetaRun(opts: {
     ? new Date(Math.max(...dates.map((d) => d.getTime())))
     : null;
 
-  const run = createRun("upzMeta", key, ids, 2 * 60 * 60 * 1000);
+  const itemsById = Object.fromEntries(
+    filtered
+      .filter((o: any) => ids.includes(String(getExternalId(o))))
+      .map((o: any) => {
+        const id = String(getExternalId(o));
+        return [
+          id,
+          {
+            unique_external_id: id,
+            name: String(o?.name ?? ""),
+            status: String(o?.status ?? ""),
+            olt_name: String(o?.olt_name ?? o?.olt_id ?? ""),
+            catv: String(o?.catv ?? ""),
+            zone_name: String(o?.zone_name ?? ""),
+            comment: String(commentText(o) ?? ""),
+            authorization_date: String(o?.authorization_date ?? ""),
+          },
+        ];
+      })
+  );
+  
+  const run = createRun(
+    "upzMeta",
+    key,
+    ids,
+    2 * 60 * 60 * 1000,
+    { itemsById }
+  );
+
 
   return {
     runId: run.runId,
@@ -1051,27 +1095,14 @@ export async function exportUpzMetaRun(opts: {
     throw new HttpError(404, "Lote vacío (probablemente ya descargaste todo)");
   }
 
-  const exported = getExportedSet(run.key);
-  idsBatch.forEach((id) => exported.add(id));
 
-  const r = await client.getAllOnusDetails({ refresh });
-  if (!r.ok) {
-    const data = (r as any).data;
-    if (isSmartOltHourlyLimit(data)) {
-      throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", data);
-    }
-    throw new HttpError((r as any).status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", data);
+  if (!run.itemsById) {
+    throw new HttpError(400, "El run no tiene snapshot itemsById");
   }
-
-  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
-
-  const byId = new Map<string, any>();
-  for (const o of onus) {
-    const id = getExternalId(o);
-    if (id) byId.set(id, o);
-  }
-
-  const list = idsBatch.map((id) => byId.get(id)).filter(Boolean);
+  
+  const list = idsBatch
+    .map((id) => run.itemsById?.[id])
+    .filter(Boolean);
 
   type Job = { kind: "signal" | "trafico"; id: string };
   const jobs: Job[] = [];
@@ -1086,16 +1117,16 @@ export async function exportUpzMetaRun(opts: {
   const graphMap = new Map<string, { signal?: any; trafico?: any }>();
   let smartOltLimitReached = false;
 
-  await mapLimit(jobs, 2, async (job) => {
+  await mapLimit(jobs, 1, async (job) => {
     if (smartOltLimitReached) return;
 
-    await sleep(120);
+    await sleep(250);
 
     try {
       const img =
         job.kind === "signal"
-          ? await client.getOnuSignalGraphDataUrl(job.id, "monthly")
-          : await client.getOnuTrafficGraphDataUrl(job.id, "monthly");
+          ? await getMonthlyGraphCached(job.id, "signal_monthly", { forceRefresh: refresh })
+          : await getMonthlyGraphCached(job.id, "traffic_monthly", { forceRefresh: refresh });
 
       const raw = JSON.stringify(img ?? {}).toLowerCase();
       if (raw.includes("hourly limit")) {
@@ -1345,6 +1376,8 @@ export async function exportUpzMetaRun(opts: {
     margin: { top: "6mm", right: "6mm", bottom: "6mm", left: "6mm" },
   });
 
+  
+  markExported(run.key, idsBatch)
   return {
     pdf,
     filename: `reporte-upz-${runUpz}-meta-${runMeta}-batch-${batch}.pdf`,
@@ -1380,7 +1413,7 @@ function upzLabelFromFilters(o: any) {
   const u = upzOf(o);
   if (u === "lucero") return "Lucero";
   if (u === "tesoro") return "Tesoro";
-  return "Otras";
+  return"";
 }
 
 
@@ -1435,7 +1468,34 @@ export async function createZonaRun(opts: {
     );
   }
 
-  const run = createRun("zona", key, ids, 2 * 60 * 60 * 1000);
+  const itemsById = Object.fromEntries(
+    zonaItems
+      .filter((o: any) => ids.includes(String(getExternalId(o))))
+      .map((o: any) => {
+        const id = String(getExternalId(o));
+        return [
+          id,
+          {
+            unique_external_id: id,
+            name: String(o?.name ?? ""),
+            status: String(o?.status ?? ""),
+            olt_name: String(o?.olt_name ?? o?.olt_id ?? ""),
+            catv: String(o?.catv ?? ""),
+            zone_name: String(o?.zone_name ?? ""),
+            comment: String(commentText(o) ?? ""),
+            authorization_date: String(o?.authorization_date ?? ""),
+          },
+        ];
+      })
+  );
+  
+  const run = createRun(
+    "zona",
+    key,
+    ids,
+    2 * 60 * 60 * 1000,
+    { itemsById }
+  );
 
   return {
     runId: run.runId,
@@ -1480,38 +1540,15 @@ export async function exportZonaRun(opts: {
     throw new HttpError(404, "Lote vacío");
   }
 
-  const exported = getExportedSet(run.key);
-  idsBatch.forEach((id) => exported.add(id));
-
-  const r = await client.getAllOnusDetails({ refresh });
-  if (!r.ok) {
-    const data = (r as any).data;
-    if (isSmartOltHourlyLimit(data)) {
-      throw new HttpError(
-        429,
-        "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.",
-        data
-      );
-    }
-    throw new HttpError(
-      (r as any).status ?? 503,
-      "Error consultando SmartOLT (get_all_onus_details).",
-      data
-    );
+  if (!run.itemsById) {
+    throw new HttpError(400, "El run no tiene snapshot itemsById");
   }
 
-  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
-
-  const byId = new Map<string, any>();
-  for (const o of onus) {
-    const id = getExternalId(o);
-    if (id) byId.set(id, o);
-  }
-
-  const list = idsBatch.map((id) => byId.get(id)).filter(Boolean);
-
-  type Job = { kind: "signal" | "trafico"; id: string };
-  const jobs: Job[] = [];
+  const list = idsBatch
+    .map((id) => run.itemsById?.[id])
+    .filter(Boolean);
+    type Job = { kind: "signal" | "trafico"; id: string };
+    const jobs: Job[] = [];
 
   for (const o of list) {
     const id = getExternalId(o);
@@ -1523,17 +1560,17 @@ export async function exportZonaRun(opts: {
   const graphMap = new Map<string, { signal?: any; trafico?: any }>();
   let smartOltLimitReached = false;
 
-  await mapLimit(jobs, 2, async (job) => {
+  await mapLimit(jobs, 1, async (job) => {
     if (smartOltLimitReached) return;
 
-    await sleep(120);
+    await sleep(250);
 
     try {
       const img =
         job.kind === "signal"
-          ? await client.getOnuSignalGraphDataUrl(job.id, "monthly")
-          : await client.getOnuTrafficGraphDataUrl(job.id, "monthly");
-
+          ? await getMonthlyGraphCached(job.id, "signal_monthly", { forceRefresh: refresh })
+          : await getMonthlyGraphCached(job.id, "traffic_monthly", { forceRefresh: refresh });
+          
       const rawTxt = JSON.stringify(img ?? {}).toLowerCase();
       if (rawTxt.includes("hourly limit")) {
         smartOltLimitReached = true;
@@ -1565,9 +1602,8 @@ export async function exportZonaRun(opts: {
   const now = new Date();
 
   const exportedNow = getExportedSet(run.key);
-  const generadasAcum = exportedNow.size;
+  const generadasAcum = exportedNow.size + idsBatch.length;
   const restantes = Math.max(0, run.ids.length - generadasAcum);
-
   const zonaNombre = run.key.split(":")[1] ?? "zona";
 
   const renderCard = (o: any) => {
@@ -1785,7 +1821,8 @@ export async function exportZonaRun(opts: {
     landscape: true,
     margin: { top: "8mm", right: "6mm", bottom: "8mm", left: "6mm" },
   });
-
+  
+  markExported(run.key, idsBatch)
   return {
     pdf,
     filename: `reporte-zona-${zonaNombre}-batch-${batch}.pdf`,
@@ -1885,7 +1922,7 @@ export async function createHealthRun(opts: {
     );
   }
 
-  const run = createRun("zona", key, ids, 2 * 60 * 60 * 1000);
+  const run = createRun("estado", key, ids, 2 * 60 * 60 * 1000);
 
   return {
     runId: run.runId,
@@ -1928,28 +1965,13 @@ export async function exportHealthRun(opts: {
     throw new HttpError(404, "Lote vacío");
   }
 
-  const exported = getExportedSet(run.key);
-  idsBatch.forEach((id) => exported.add(id));
-
-  const r = await client.getAllOnusDetails({ refresh });
-
-  if (!r.ok) {
-    const data = (r as any).data;
-    if (isSmartOltHourlyLimit(data)) {
-      throw new HttpError(429, "SmartOLT alcanzó el límite de consultas por hora. Intenta más tarde.", data);
-    }
-    throw new HttpError((r as any).status ?? 503, "Error consultando SmartOLT (get_all_onus_details).", data);
+  if (!run.itemsById) {
+    throw new HttpError(400, "El run no tiene snapshot itemsById");
   }
-
-  const onus = Array.isArray((r as any).onus) ? (r as any).onus : [];
-
-  const byId = new Map<string, any>();
-  for (const o of onus) {
-    const id = getExternalId(o);
-    if (id) byId.set(id, o);
-  }
-
-  const list = idsBatch.map((id) => byId.get(id)).filter(Boolean);
+  
+  const list = idsBatch
+    .map((id) => run.itemsById?.[id])
+    .filter(Boolean);
 
   type Job = { kind: "signal" | "trafico"; id: string };
   const jobs: Job[] = [];
@@ -1964,17 +1986,17 @@ export async function exportHealthRun(opts: {
   const graphMap = new Map<string, { signal?: any; trafico?: any }>();
   let smartOltLimitReached = false;
 
-  await mapLimit(jobs, 2, async (job) => {
+  await mapLimit(jobs, 1, async (job) => {
     if (smartOltLimitReached) return;
 
-    await sleep(120);
+    await sleep(250);
 
     try {
       const img =
         job.kind === "signal"
-          ? await client.getOnuSignalGraphDataUrl(job.id, "monthly")
-          : await client.getOnuTrafficGraphDataUrl(job.id, "monthly");
-
+          ? await getMonthlyGraphCached(job.id, "signal_monthly", { forceRefresh: refresh })
+          : await getMonthlyGraphCached(job.id, "traffic_monthly", { forceRefresh: refresh });
+          
       const rawTxt = JSON.stringify(img ?? {}).toLowerCase();
       if (rawTxt.includes("hourly limit")) {
         smartOltLimitReached = true;
@@ -2231,7 +2253,8 @@ export async function exportHealthRun(opts: {
     landscape: true,
     margin: { top: "8mm", right: "6mm", bottom: "8mm", left: "6mm" },
   });
-
+  
+  markExported(run.key, idsBatch)
   return {
     pdf,
     filename: `reporte-estado-${status}-${signal || "none"}-${batch}.pdf`,
@@ -2298,6 +2321,53 @@ function renderBarGroup(
   `;
 }
 
+function renderMetaUpzCards(
+  title: string,
+  blocks: Array<{
+    upz: string;
+    metas: Array<[string, number]>;
+  }>
+) {
+  return `
+    <section class="block full">
+      <div class="block-title">${esc(title)}</div>
+
+      <div class="meta-upz-grid">
+        ${blocks
+          .map((block) => {
+            const max = Math.max(1, ...block.metas.map(([, v]) => v));
+
+            return `
+              <div class="meta-upz-card">
+                <div class="meta-upz-title">${esc(block.upz)}</div>
+
+                <div class="bar-list">
+                  ${block.metas
+                    .map(([label, value]) => {
+                      const pct = Math.max(3, Math.round((value / max) * 100));
+                      return `
+                        <div class="bar-item">
+                          <div class="bar-head">
+                            <span class="bar-label">${esc(label)}</span>
+                            <span class="bar-number">${value}</span>
+                          </div>
+                          <div class="bar-track">
+                            <div class="bar-fill blue" style="width:${pct}%"></div>
+                          </div>
+                        </div>
+                      `;
+                    })
+                    .join("")}
+                </div>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderStatCard(label: string, value: number, tone = "blue") {
   return `
     <div class="stat-card ${tone}">
@@ -2317,7 +2387,6 @@ export async function generateStatsPdf(opts: {
   const upzEntries: Array<[string, number]> = [
     ["Lucero", data.byUpz.lucero ?? 0],
     ["Tesoro", data.byUpz.tesoro ?? 0],
-    ["Otras", data.byUpz.otro ?? 0],
   ];
 
   const metaEntries: Array<[string, number]> = [
@@ -2326,7 +2395,27 @@ export async function generateStatsPdf(opts: {
     ["M3", data.byMeta.m3 ?? 0],
     ["Sin meta", data.byMeta.none ?? 0],
   ];
-
+  
+  const metaUpzEntries = [
+    {
+      upz: "Lucero",
+      metas: [
+        ["M1", data.byMetaUpz?.lucero?.m1 ?? 0],
+        ["M2", data.byMetaUpz?.lucero?.m2 ?? 0],
+        ["M3", data.byMetaUpz?.lucero?.m3 ?? 0],
+        ["Sin meta", data.byMetaUpz?.lucero?.none ?? 0],
+      ] as Array<[string, number]>,
+    },
+    {
+      upz: "Tesoro",
+      metas: [
+        ["M1", data.byMetaUpz?.tesoro?.m1 ?? 0],
+        ["M2", data.byMetaUpz?.tesoro?.m2 ?? 0],
+        ["M3", data.byMetaUpz?.tesoro?.m3 ?? 0],
+        ["Sin meta", data.byMetaUpz?.tesoro?.none ?? 0],
+      ] as Array<[string, number]>,
+    },
+  ];
   const estadoEntries: Array<[string, number]> = [
     ["Online", data.byEstado.online ?? 0],
     ["Offline", data.byEstado.offline ?? 0],
@@ -2517,7 +2606,25 @@ export async function generateStatsPdf(opts: {
             font-weight: 900;
             color: #0f172a;
           }
-
+          .meta-upz-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 14px;
+          }
+          
+          .meta-upz-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            padding: 12px;
+            background: #f8fafc;
+          }
+          
+          .meta-upz-title {
+            font-size: 14px;
+            font-weight: 800;
+            color: #0f172a;
+            margin-bottom: 10px;
+          }
           .foot {
             margin-top: 16px;
             font-size: 10px;
@@ -2545,7 +2652,8 @@ export async function generateStatsPdf(opts: {
           ${renderBarGroup("Distribución por Meta", metaEntries, "green")}
           ${renderBarGroup("Distribución por Estado", estadoEntries, "red")}
           ${renderBarGroup("Distribución por calidad de señal", signalEntries, "amber")}
-
+          ${renderMetaUpzCards("Distribución por Meta+UPZ", metaUpzEntries)}
+          
           <section class="block full">
             <div class="block-title">Top zonas</div>
             ${renderBarGroup("Zonas con más ONUs", zonaTop, "slate")}
@@ -2585,5 +2693,446 @@ export async function generateStatsPdf(opts: {
     pdf,
     filename: "reporte-estadistico-smartolt.pdf",
     data,
+  };
+}
+
+// -----------------Report uplink--------------------
+function normalizeText(value: any) {
+  return String(value ?? "").trim();
+}
+
+function parseNumberSafe(value: any): number | null {
+  const n = Number(String(value ?? "").trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseUplinkVlanTag(vlanTag: string): number[] {
+  const raw = normalizeText(vlanTag);
+  if (!raw) return [];
+
+  const result = new Set<number>();
+
+  for (const part of raw.split(",")) {
+    const token = part.trim();
+    if (!token) continue;
+
+    if (token.includes("-")) {
+      const [startRaw, endRaw] = token.split("-");
+      const start = parseNumberSafe(startRaw);
+      const end = parseNumberSafe(endRaw);
+
+      if (start == null || end == null) continue;
+
+      const from = Math.min(start, end);
+      const to = Math.max(start, end);
+
+      for (let i = from; i <= to; i++) {
+        result.add(i);
+      }
+    } else {
+      const single = parseNumberSafe(token);
+      if (single != null) result.add(single);
+    }
+  }
+
+  return Array.from(result).sort((a, b) => a - b);
+}
+
+function getOnuVlans(onu: any): number[] {
+  const servicePorts = Array.isArray(onu?.service_ports) ? onu.service_ports : [];
+  const result = new Set<number>();
+
+  for (const sp of servicePorts) {
+    const vlan = parseNumberSafe(sp?.vlan);
+    if (vlan != null) result.add(vlan);
+  }
+
+  return Array.from(result).sort((a, b) => a - b);
+}
+
+function is10GUplink(uplink: any) {
+  return normalizeText(uplink?.status).toUpperCase() === "10G-FULLD";
+}
+
+function uplinkContainsVlan(uplink: any, vlan: number) {
+  const uplinkVlans = parseUplinkVlanTag(uplink?.vlan_tag ?? "");
+  return uplinkVlans.includes(vlan);
+}
+
+function uplinkVlanRunKey(oltId: string | number, vlan: string | number) {
+  return `uplinkvlan:${String(oltId).trim()}:${String(vlan).trim()}`;
+}
+
+export async function createUplinkVlanRun(opts: {
+  oltId: string | number;
+  vlan: string | number;
+  refresh?: boolean;
+}) {
+  const { oltId, vlan, refresh = false } = opts;
+
+  if (!oltId) {
+    throw new HttpError(400, "Falta oltId");
+  }
+
+  const vlanNum = Number(String(vlan ?? "").trim());
+  if (!Number.isFinite(vlanNum)) {
+    throw new HttpError(400, "Falta vlan válida");
+  }
+
+  const uplinkResp = await client.getOltUplinkPortsDetails(String(oltId));
+  if (!uplinkResp.ok) {
+    throw new HttpError(
+      uplinkResp.status ?? 503,
+      "Error consultando uplinks del equipo en SmartOLT.",
+      uplinkResp.data ?? {}
+    );
+  }
+
+  const uplinks = Array.isArray(uplinkResp.response) ? uplinkResp.response : [];
+  const validUplinks = uplinks.filter(
+    (u: any) => is10GUplink(u) && uplinkContainsVlan(u, vlanNum)
+  );
+
+  const catalog = await getCatalogWithMemoryFallback({ refresh });
+  const onus = Array.isArray(catalog.onus) ? catalog.onus : [];
+
+  const teamOnus = onus.filter(
+    (o: any) => String(o?.olt_id ?? "") === String(oltId)
+  );
+
+  const filtered = teamOnus.filter((o: any) => {
+    const onuVlans = getOnuVlans(o);
+    return onuVlans.includes(vlanNum);
+  });
+
+  if (!filtered.length) {
+    throw new HttpError(
+      404,
+      `No hay ONUs para oltId=${oltId} con vlan=${vlanNum}`
+    );
+  }
+
+  let ids = filtered
+    .map((o: any) => getExternalId(o))
+    .filter((x): x is string => Boolean(x));
+
+  ids = Array.from(new Set(ids));
+
+  const key = uplinkVlanRunKey(oltId, vlanNum);
+  const exported = getExportedSet(key);
+
+  ids = ids.filter((id) => !exported.has(id));
+
+  if (!ids.length) {
+    throw new HttpError(
+      404,
+      `No hay ONUs nuevas para oltId=${oltId} con vlan=${vlanNum}. Probablemente ya descargaste todo.`
+    );
+  }
+
+  const itemsById = Object.fromEntries(
+    filtered
+      .filter((o: any) => ids.includes(String(getExternalId(o))))
+      .map((o: any) => {
+        const id = String(getExternalId(o));
+        const onuVlans = getOnuVlans(o);
+
+        return [
+          id,
+          {
+            unique_external_id: id,
+            name: String(o?.name ?? ""),
+            status: String(o?.status ?? ""),
+            olt_id: String(o?.olt_id ?? ""),
+            olt_name: String(o?.olt_name ?? o?.olt_id ?? ""),
+            zone_name: String(o?.zone_name ?? ""),
+            catv: String(o?.catv ?? ""),
+            board: String(o?.board ?? ""),
+            port: String(o?.port ?? ""),
+            onu: String(o?.onu ?? ""),
+            comment: String(commentText(o) ?? ""),
+            authorization_date: String(o?.authorization_date ?? ""),
+            isMintic: Boolean(isMintic(o)),
+            onuVlans,
+            matchingUplinks: validUplinks.map((u: any) => ({
+              name: String(u?.name ?? ""),
+              description: String(u?.description ?? ""),
+              status: String(u?.status ?? ""),
+              mode: String(u?.mode ?? ""),
+              vlan_tag: String(u?.vlan_tag ?? ""),
+              admin_status: String(u?.admin_status ?? ""),
+            })),
+          },
+        ];
+      })
+  );
+
+  const run = createRun(
+    "uplinkVlan",
+    key,
+    ids,
+    2 * 60 * 60 * 1000,
+    { itemsById }
+  );
+
+  return {
+    runId: run.runId,
+    oltId: String(oltId),
+    vlan: vlanNum,
+    total: ids.length,
+    totalLotes: Math.ceil(ids.length / 100),
+    totalUplinksValidos: validUplinks.length,
+    expiresInMinutes: 120,
+  };
+}
+
+export async function exportUplinkVlanRun(opts: {
+  runId: string;
+  batch?: number;
+  size?: number;
+}) {
+  const { runId, batch = 0, size = 100 } = opts;
+
+  const run = getRun(runId);
+  if (!run) {
+    throw new HttpError(400, "runId inválido o expirado");
+  }
+
+  if (run.type !== "uplinkVlan") {
+    throw new HttpError(400, "El run no corresponde a tipo uplinkVlan");
+  }
+
+  if (!run.itemsById) {
+    throw new HttpError(400, "El run no tiene snapshot itemsById");
+  }
+
+  const start = batch * size;
+  const end = start + size;
+  const idsBatch = run.ids.slice(start, end);
+
+  if (!idsBatch.length) {
+    throw new HttpError(404, "Lote vacío");
+  }
+
+  const list = idsBatch
+    .map((id) => run.itemsById?.[id])
+    .filter(Boolean);
+
+  const now = new Date();
+  const parts = run.key.split(":");
+  const oltId = parts[1] ?? "";
+  const vlan = parts[2] ?? "";
+
+  const exportedNow = getExportedSet(run.key);
+  const generadasAcum = exportedNow.size + idsBatch.length;
+  const restantes = Math.max(0, run.ids.length - generadasAcum);
+
+  const renderUplinkList = (uplinks: any[]) => {
+    if (!uplinks?.length) {
+      return `<div class="small muted">Sin uplinks válidos 10G-FullD para esta VLAN</div>`;
+    }
+
+    return `
+      <div class="uplinkBox">
+        ${uplinks
+          .map(
+            (u: any) => `
+              <div class="uplinkItem">
+                <div><b>${esc(u?.name ?? "-")}</b></div>
+                <div class="small">Status: ${esc(u?.status ?? "-")} | Mode: ${esc(u?.mode ?? "-")}</div>
+                <div class="small">VLAN Tag: ${esc(u?.vlan_tag ?? "-")}</div>
+                <div class="small">Admin: ${esc(u?.admin_status ?? "-")} ${u?.description ? `| Desc: ${esc(u.description)}` : ""}</div>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    `;
+  };
+
+  const renderCard = (o: any) => {
+    const onuId = String(o?.unique_external_id ?? "-");
+    const pos = `${o?.board ?? ""}/${o?.port ?? ""}/${o?.onu ?? ""}`;
+
+    return `
+      <div class="card">
+        <div class="head">
+          <div class="left">
+            <div class="name">${esc(o?.name ?? onuId)}</div>
+            <div class="sub">
+              <span class="pill ${pillClass(o?.status)}">${esc(o?.status ?? "-")}</span>
+              <span class="pill ${o?.isMintic ? "mintic" : "nomintic"}">${o?.isMintic ? "MINTIC" : "No MINTIC"}</span>
+              <span class="muted">OLT:</span> <b>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</b>
+            </div>
+            <div class="comment"><span class="muted">Posición:</span> ${esc(pos || "-")}</div>
+            <div class="comment"><span class="muted">Zona:</span> ${esc(o?.zone_name ?? "-")}</div>
+            <div class="comment"><span class="muted">VLAN ONU:</span> ${esc((o?.onuVlans ?? []).join(", ") || "-")}</div>
+            <div class="comment"><span class="muted">Comentario:</span> ${esc(o?.comment ?? "-")}</div>
+            <div class="comment"><span class="muted">Fecha autorización:</span> ${esc(o?.authorization_date ?? "-")}</div>
+          </div>
+
+          <div class="right">
+            <div class="muted">External ID</div>
+            <div class="idv">${esc(onuId)}</div>
+          </div>
+        </div>
+
+        <div class="sectionTitle">Uplinks vinculados por VLAN</div>
+        ${renderUplinkList(o?.matchingUplinks ?? [])}
+      </div>
+    `;
+  };
+
+  const pages = chunk(list, 4);
+
+  const renderPage = (items: any[]) => `
+    <section class="page">
+      <div class="pageHead">
+        <h1>Reporte Uplink por VLAN | OLT ${esc(oltId)} | VLAN ${esc(vlan)}</h1>
+        <div class="meta">
+          Generado: ${esc(now.toLocaleString())}
+          | Total RUN: ${esc(run.ids.length)}
+          | Generadas: ${esc(generadasAcum)}
+          | Restantes: ${esc(restantes)}
+          | Lote: ${esc(batch)}
+          | Rango: ${esc(start)}-${esc(Math.min(end - 1, run.ids.length - 1))}
+        </div>
+      </div>
+
+      <div class="cards">
+        ${items.map(renderCard).join("")}
+      </div>
+    </section>
+  `;
+
+  const html = `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Reporte Uplink VLAN</title>
+        <style>
+          *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+          body{ margin:0; color:#111; background:#f4f6f8; }
+          .page{
+            padding:6mm;
+            page-break-after: always;
+            min-height:190mm;
+            display:flex;
+            flex-direction:column;
+          }
+          .page:last-child{ page-break-after:auto; }
+          .pageHead{ display:flex; flex-direction:column; gap:2px; margin-bottom:3px; }
+          .cards{
+            display:grid;
+            grid-template-rows: 1fr 1fr;
+            gap:5px;
+            flex:1 1 auto;
+            min-height:0;
+          }
+          .card{
+            border:1px solid #dfe5ea;
+            border-radius:14px;
+            padding:6px;
+            background:#fff;
+            box-shadow:0 1px 3px rgba(0,0,0,.05);
+            overflow:hidden;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          h1{ margin:0; font-size:18px; font-weight:900; color:#123; }
+          .meta{ font-size:10px; color:#555; }
+          .head{ display:flex; justify-content:space-between; gap:10px; }
+          .sub{
+            margin-top:3px;
+            font-size:9px;
+            display:flex;
+            gap:6px;
+            align-items:center;
+            flex-wrap:wrap;
+          }
+          .comment{ margin-top:4px; font-size:8px; color:#111; }
+          .muted{ color:#666; font-size:10px; }
+          .right{ min-width:150px; text-align:right; }
+          .idv{
+            font-weight:800;
+            font-size:9px;
+            word-break:break-all;
+            color:#0f172a;
+          }
+          .pill{
+            display:inline-block;
+            padding:2px 8px;
+            border-radius:999px;
+            font-size:9px;
+            border:1px solid #ddd;
+            font-weight:700;
+            background:#fff;
+          }
+          .pill.online{ border-color:#16a34a; color:#16a34a; }
+          .pill.los{ border-color:#c0392b; color:#c0392b; }
+          .pill.pf{ border-color:#7f8c8d; color:#7f8c8d; }
+          .pill.unk{ border-color:#95a5a6; color:#95a5a6; }
+          .pill.mintic{ border-color:#2563eb; color:#2563eb; }
+          .pill.nomintic{ border-color:#64748b; color:#64748b; }
+          .sectionTitle{
+            margin-top:8px;
+            font-size:10px;
+            font-weight:800;
+            color:#0f172a;
+          }
+          .uplinkBox{
+            margin-top:4px;
+            border:1px solid #e5e7eb;
+            border-radius:10px;
+            padding:6px;
+            background:#fafafa;
+          }
+          .uplinkItem{
+            padding:5px 0;
+            border-bottom:1px dashed #ddd;
+            font-size:9px;
+          }
+          .uplinkItem:last-child{ border-bottom:0; }
+          .small{ font-size:9px; color:#555; }
+        </style>
+      </head>
+      <body>
+        ${pages.map(renderPage).join("")}
+      </body>
+    </html>
+  `;
+
+  const pdf = await renderPdf(html, {
+    format: "A4",
+    landscape: true,
+    margin: { top: "8mm", right: "6mm", bottom: "8mm", left: "6mm" },
+  });
+
+  markExported(run.key, idsBatch);
+
+  return {
+    pdf,
+    filename: `reporte-uplink-vlan-olt-${oltId}-vlan-${vlan}-batch-${batch}.pdf`,
+    total: run.ids.length,
+    batch,
+    size,
+    exportedNow: idsBatch.length,
+    remaining: restantes,
+  };
+}
+
+export async function resetUplinkVlanRun(opts: {
+  oltId: string | number;
+  vlan: string | number;
+}) {
+  const key = uplinkVlanRunKey(opts.oltId, opts.vlan);
+  getExportedSet(key).clear();
+
+  return {
+    ok: true,
+    message: "Reset uplink vlan aplicado",
+    oltId: String(opts.oltId),
+    vlan: String(opts.vlan),
   };
 }

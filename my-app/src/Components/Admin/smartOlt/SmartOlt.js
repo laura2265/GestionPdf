@@ -219,23 +219,10 @@ function SmartOlt() {
           <div className="dropdown-reportes" ref={reportesRef}>
             <button className="btn">Reportes▾</button>
             <div className="dropdown-reportes-menu">
-              <button onClick={() => window.open("http://localhost:3000/api/smart-olt/report/pdf", "_blank")}>
-                Reporte General
-              </button>
               <button onClick={() => navigate("/reportes")}>Reporte por UPZ</button>
               <button onClick={() => navigate("/reporte-Upz-Meta")}>Reporte por Meta</button>
               <button onClick={() => navigate("/reporte-zona")}>Reporte por Zona</button>
               <button onClick={() => navigate("/reporte-estado")}>Reporte por Estado</button>
-              <button
-                onClick={() =>
-                  window.open(
-                    "http://localhost:3000/api/smart-olt/report/stats-pdf?mintic=true&refresh=true",
-                    "_blank"
-                  )
-                }
-              >
-                Reporte por estadística
-              </button>
             </div>
           </div>
 

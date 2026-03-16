@@ -1,19 +1,39 @@
+type RunItemSnapshop={
+  unique_external_id:string;
+  name: string;
+  status: string;
+  olt_name?: string;
+  catv?: string;
+  zone_name?:string;
+  comment?: string;
+  authorization_date?: string;
+}
+
 type Run = {
   runId: string;
-  type: "upz" | "upzMeta" | "zona";
+  type: "upz" | "upzMeta" | "zona" | "estado" | "uplinkVlan";
   key: string;
   ids: string[];
   createdAt: number;
   expiresAt: number;
+  itemsById?: Record<string, RunItemSnapshop>;
 };
 
 const runs = new Map<string, Run>();
 const exportedByKey = new Map<string, Set<string>>();
 
-export function createRun(type: Run["type"], key: string, ids: string[], ttlMs = 15 * 60_000): Run {
+export function createRun(type: Run["type"], key: string, ids: string[], ttlMs = 15 * 60_000, extra:Partial<Run>={}): Run {
   const runId = `${type}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const now = Date.now();
-  const run: Run = { runId, type, key, ids, createdAt: now, expiresAt: now + ttlMs };
+  const run: Run = {
+    runId,
+    type,
+    key,
+    ids,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + ttlMs,
+    ...extra,
+  };
+
   runs.set(runId, run);
   return run;
 }
