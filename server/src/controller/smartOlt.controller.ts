@@ -1,4 +1,4 @@
-import e, {NextFunction, Request, Response} from "express";
+import e, {NextFunction, Request, response, Response} from "express";
 import { norm, toBool } from "../utils/SmartOlt/normalize.js";
 import *as service from "../services/SmartOlt/smarOlt.service.js"
 import *as client from "../services/SmartOlt/smartOlt.client.js"
@@ -519,51 +519,69 @@ export async function reportStatsPdf(req, res, next) {
 
 //----------------------reporte por uplink----------
 export async function getUplinkDetails(req: any, res: any, next: any) {
-  try{
-    const{ id } = req.params;
-    const data = await client.getOltUplinkPortsDetails({id})
+  try {
+    const id = req.params?.id;
 
-    res.status(200).json({
-      ok: true,
-      data: data
-    })
+    if (!id) {
+      return res.status(400).json({
+        ok: false,
+        message: "Falta id del equipo",
+      });
+    }
 
-  }catch(error){
-    next(error)
+    const data = await client.getOltUplinkPortsDetails(id);
+
+    return res.status(data?.status ?? 200).json(data);
+  } catch (error) {
+    next(error);
   }
 }
+export async function createUplinkVlanRun(req: any, res: any, next: any) {
+  try {
+    const oltId = req.body?.oltId ?? req.query?.oltId;
+    const vlan = req.body?.vlan ?? req.query?.vlan;
+    const refresh =
+      String(req.body?.refresh ?? req.query?.refresh ?? "false").toLowerCase() === "true";
 
-export async function createUplinkVlanRun(req:any, res: any, next: any) {
-  try{
     const data = await report.createUplinkVlanRun({
-      oltId: req.body.oltId ?? req.query.oltId,
-      vlan: req.body.vlan ?? req.query.vlan,
-      refresh: String(req.body?.refresh ?? req.query.refresh??"false").toLowerCase() === "true",
-    })
+      oltId,
+      vlan,
+      refresh,
+    });
+
     return res.json({
       ok: true,
       ...data,
     });
-  }catch(error){
-    next(error)
-  }
-}
-export async function exportUplinkVlanRun(req:any, res:any, next:any) {
-  try{
-    const data = await report.exportUplinkVlanRun({
-      runId: req.query?.runId ?? req.params?.runId,
-      batch: req.query?.batch != null ? Number(req.query.batch):0,
-      size: req.query?.size != null? Number(req.query.size): 100,
-    });
-    res.setHeader("Content-Type", "application/json");
-    res.setHeader("Content-Disposition", `inline; filename="${data.filename}"`);
-
-    return res.send(data.pdf);
-  }catch(error){
+  } catch (error) {
     next(error);
   }
 }
 
+export async function exportUplinkVlanRun(req: any, res: any, next: any) {
+  try {
+    const data = await report.exportUplinkVlanRun({
+      runId: req.query?.runId ?? req.params?.runId,
+      batch: req.query?.batch != null ? Number(req.query.batch) : 0,
+      size: req.query?.size != null ? Number(req.query.size) : 100,
+    });
+
+    const pdfBuffer = Buffer.isBuffer(data.pdf)
+      ? data.pdf
+      : Buffer.from(data.pdf);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${data.filename}"`
+    );
+    res.setHeader("Content-Length", pdfBuffer.length);
+
+    return res.end(pdfBuffer);
+  } catch (error) {
+    next(error);
+  }
+}
 
 export async function resetUplinkVlanRun(req:any, res:any, next:any) {
   try{
@@ -577,6 +595,89 @@ export async function resetUplinkVlanRun(req:any, res:any, next:any) {
       ...data,
     })
   }catch(error){
+    next(error);
+  }
+}
+
+// -----------------Reporte por GPON---------------------
+export async function getGponDetails(req: any, res: any, next: any) {
+  try{
+
+    const r = await client.getGponDetails();
+    if(!r){
+      res.status(403).json({
+        ok: false,
+        message: "Error al momento de consultar los datos de la api"
+      })
+    }
+
+    res.status(200).json({
+      ok: true,
+      message: "Consulta realizada con exito",
+      data: r.data.response
+    })
+
+  }catch(error){
+    return res.status(500).json({
+      ok: false,
+      message: error.message
+    })
+  }
+}
+
+export async function createOnuModelRun(req: any, res: any, next: any) {
+  try {
+    const data = await report.createOnuModelRun({
+      modelName: req.body?.modelName ?? req.query?.modelName,
+      refresh: String(req.body?.refresh ?? req.query?.refresh ?? "false").toLowerCase() === "true",
+    });
+
+    return res.json({
+      ok: true,
+      ...data,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function exportOnuModelRun(req: any, res: any, next: any) {
+  try {
+    const data = await report.exportOnuModelRun({
+      runId: req.query?.runId ?? req.params?.runId,
+      batch: req.query?.batch != null ? Number(req.query.batch) : 0,
+      size: req.query?.size != null ? Number(req.query.size) : 100,
+      refresh: String(req.query?.refresh ?? "false").toLowerCase() === "true",
+    });
+
+    const pdfBuffer = Buffer.isBuffer(data.pdf)
+      ? data.pdf
+      : Buffer.from(data.pdf);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${data.filename}"`
+    );
+    res.setHeader("Content-Length", pdfBuffer.length);
+
+    return res.end(pdfBuffer);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resetOnuModelRun(req: any, res: any, next: any) {
+  try {
+    const data = await report.resetOnuModelRun({
+      modelName: req.body?.modelName ?? req.query?.modelName,
+    });
+
+    return res.json({
+      ok: true,
+      ...data,
+    });
+  } catch (error) {
     next(error);
   }
 }

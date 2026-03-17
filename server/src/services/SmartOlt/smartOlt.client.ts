@@ -247,18 +247,16 @@ export async function getOnuSpeedProfiles(id: string, opts: { refresh?: boolean 
   );
 }
 
-// 5) Gráficas como IMAGEN (para endpoints que devuelven PNG)
 export async function getOnuSignalGraphImage(id: string, tipo: string) {
   const url = `${baseUrl}/onu/get_onu_signal_graph/${encodeURIComponent(id)}/${encodeURIComponent(tipo)}`;
-  return fetchImage(url); // ✅ devuelve { ok, contentType, buffer }
+  return fetchImage(url);
 }
 
 export async function getOnuTrafficGraphImage(id: string, tipo: string) {
   const url = `${baseUrl}/onu/get_onu_traffic_graph/${encodeURIComponent(id)}/${encodeURIComponent(tipo)}`;
-  return fetchImage(url); // ✅ devuelve { ok, contentType, buffer }
+  return fetchImage(url);
 }
 
-// 6) Gráficas como DataURL (para PDF/HTML)
 export async function getOnuSignalGraphDataUrl(id: string, tipo: string) {
   const url = `${baseUrl}/onu/get_onu_signal_graph/${encodeURIComponent(id)}/${encodeURIComponent(tipo)}`;
   return fetchGraphAsDataUrl(url, `signal:${id}:${tipo}`);
@@ -273,6 +271,8 @@ export async function getOltUplinkPortsDetails(id: string | number) {
   const url = `${baseUrl}/system/get_olt_uplink_ports_details/${encodeURIComponent(String(id))}`;
 
   try {
+    assertToken();
+
     const resp = await fetch(url, {
       method: "GET",
       headers: {
@@ -305,5 +305,35 @@ export async function getOltUplinkPortsDetails(id: string | number) {
         message: String(error?.message ?? error),
       },
     };
+  }
+}
+
+export async function getGponDetails() {
+  const url = `${baseUrl}/system/get_onu_types_by_pon_type/gpon`
+  try{
+
+    const resp = await fetch(url,{
+      method: "GET",
+      headers:{
+        "X-Token": tokenSmart,
+        Accept: "application/json",
+      }
+    })
+
+    const data = await resp.json()
+
+    return{
+      ok: true,
+      status: resp.status,
+      data
+    }
+  }catch(err: any){
+    return{
+      ok: false,
+      status: 503,
+      data: {
+        message: String(err?.message?? err)
+      }
+    }
   }
 }

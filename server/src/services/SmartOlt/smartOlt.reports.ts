@@ -21,7 +21,7 @@ import { createRun, getRun, getExportedSet, markExported } from "../../utils/Sma
 import { mapLimit, sleep } from "../../utils/SmartOlt/concurrency.js"
 import { getCatalogWithMemoryFallback } from "./smartOlt.catalog.js"
 import { getMonthlyGraphCached } from "./smartOlt.graph.js"
-import { string } from "zod"
+import { set, string } from "zod"
 
 type GenerarPdfOpts={
     refresh?: boolean;
@@ -668,7 +668,7 @@ export async function exportUpzCardsRun(opts: {
     );
   }
 
-  const pages = chunk(list, 4);
+  const pages = chunk(list, 2);
   const now = new Date();
 
   const renderCard = (o: any) => {
@@ -2800,7 +2800,9 @@ export async function createUplinkVlanRun(opts: {
     (o: any) => String(o?.olt_id ?? "") === String(oltId)
   );
 
-  const filtered = teamOnus.filter((o: any) => {
+  const minticOnus = teamOnus.filter((o: any) => isMintic(o));
+
+  const filtered = minticOnus.filter((o: any) => {
     const onuVlans = getOnuVlans(o);
     return onuVlans.includes(vlanNum);
   });
@@ -2808,7 +2810,7 @@ export async function createUplinkVlanRun(opts: {
   if (!filtered.length) {
     throw new HttpError(
       404,
-      `No hay ONUs para oltId=${oltId} con vlan=${vlanNum}`
+      `No hay ONUs MINTIC para oltId=${oltId} con vlan=${vlanNum}`
     );
   }
 
@@ -2826,7 +2828,7 @@ export async function createUplinkVlanRun(opts: {
   if (!ids.length) {
     throw new HttpError(
       404,
-      `No hay ONUs nuevas para oltId=${oltId} con vlan=${vlanNum}. Probablemente ya descargaste todo.`
+      `No hay ONUs MINTIC nuevas para oltId=${oltId} con vlan=${vlanNum}. Probablemente ya descargaste todo.`
     );
   }
 
@@ -2852,7 +2854,7 @@ export async function createUplinkVlanRun(opts: {
             onu: String(o?.onu ?? ""),
             comment: String(commentText(o) ?? ""),
             authorization_date: String(o?.authorization_date ?? ""),
-            isMintic: Boolean(isMintic(o)),
+            isMintic: true,
             onuVlans,
             matchingUplinks: validUplinks.map((u: any) => ({
               name: String(u?.name ?? ""),
@@ -2875,14 +2877,17 @@ export async function createUplinkVlanRun(opts: {
     { itemsById }
   );
 
+  const totalLotes = Math.ceil(ids.length / 100);
+
   return {
     runId: run.runId,
     oltId: String(oltId),
     vlan: vlanNum,
     total: ids.length,
-    totalLotes: Math.ceil(ids.length / 100),
+    totalLotes,
     totalUplinksValidos: validUplinks.length,
     expiresInMinutes: 120,
+    exportUrl: `/api/smart-olt/uplink-vlan/export?runId=${encodeURIComponent(run.runId)}&batch=0&size=100`,
   };
 }
 
@@ -2918,6 +2923,56 @@ export async function exportUplinkVlanRun(opts: {
     .map((id) => run.itemsById?.[id])
     .filter(Boolean);
 
+  type Job = { kind: "signal" | "trafico"; id: string }
+  const jobs: Job[]=[];
+
+  for(const o of list){
+    const id = getExternalId(o);
+    if(!id)continue;
+    jobs.push({kind: "signal", id});
+    jobs.push({ kind: "trafico", id});
+  }
+
+  const graphMap = new Map<string, {signal?: any; trafico?:any }>();
+  let smartOltLimitReached = false;
+
+  await mapLimit(jobs, 1, async (job)=>{
+    if(smartOltLimitReached)return;
+
+    await sleep(250);
+
+    try{
+      const img = 
+        job.kind === "signal"
+        ?await getMonthlyGraphCached(job.id, "signal_monthly", { forceRefresh: false })
+        :await getMonthlyGraphCached(job.id, "traffic_monthly", { forceRefresh: false });
+      
+      const raw = JSON.stringify(img ?? {}).toLowerCase();
+      if(raw.includes("hourly limit")){
+        smartOltLimitReached = true;
+        return;
+      }
+
+      const prev = graphMap.get(job.id) || {};
+      if(job.kind === "signal") prev.signal = img;
+      else prev.trafico = img;
+      graphMap.set(job.id, prev);
+    }catch(error: any){
+      const txt = String(error?.message ?? error).toLowerCase();
+      if(txt.includes("hourly limit")){
+        smartOltLimitReached = true;
+        return; 
+      }
+      throw error
+    }
+
+  });
+
+  if(smartOltLimitReached){
+    throw new HttpError(429, "Se activo el limite de consultas de SmartOlt . No se genero el reporte")
+  }
+
+
   const now = new Date();
   const parts = run.key.split(":");
   const oltId = parts[1] ?? "";
@@ -2952,6 +3007,7 @@ export async function exportUplinkVlanRun(opts: {
 
   const renderCard = (o: any) => {
     const onuId = String(o?.unique_external_id ?? "-");
+    const g = graphMap.get(onuId) || {};
     const pos = `${o?.board ?? ""}/${o?.port ?? ""}/${o?.onu ?? ""}`;
 
     return `
@@ -2979,11 +3035,17 @@ export async function exportUplinkVlanRun(opts: {
 
         <div class="sectionTitle">Uplinks vinculados por VLAN</div>
         ${renderUplinkList(o?.matchingUplinks ?? [])}
+
+        <div class="sectionTitle">Gráficas mensuales</div>
+        <div class="grid2">
+          ${renderGraphBox("Señal (monthly)", g?.signal)}
+          ${renderGraphBox("Tráfico (monthly)", g?.trafico)}
+        </div>
       </div>
     `;
   };
 
-  const pages = chunk(list, 4);
+  const pages = chunk(list, 2);
 
   const renderPage = (items: any[]) => `
     <section class="page">
@@ -3095,6 +3157,55 @@ export async function exportUplinkVlanRun(opts: {
           }
           .uplinkItem:last-child{ border-bottom:0; }
           .small{ font-size:9px; color:#555; }
+          .graphs{
+            display:grid;
+            grid-template-columns: 1fr 1fr;
+            gap:8px;
+            margin-top:6px;
+          }
+
+          .grid2{
+            margin-top:6px;
+            display:grid;
+            grid-template-columns: 1fr 1fr;
+            gap:6px;
+          }
+
+          .g{
+            border:1px solid #e5e7eb;
+            border-radius:10px;
+            padding:4px;
+            background:#fafafa;
+          }
+
+          .gt{
+            font-size:10px;
+            font-weight:800;
+            margin-bottom:4px;
+          }
+
+          .g img{
+            width:100%;
+            max-height:180px;
+            object-fit:contain;
+            display:block;
+            background:#fff;
+            border-radius:8px;
+          }
+
+          .gempty{
+            min-height:140px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            text-align:center;
+            font-size:10px;
+            color:#666;
+            border:1px dashed #ddd;
+            border-radius:8px;
+            background:#fff;
+            padding:8px;
+          }
         </style>
       </head>
       <body>
@@ -3112,7 +3223,7 @@ export async function exportUplinkVlanRun(opts: {
   markExported(run.key, idsBatch);
 
   return {
-    pdf,
+    pdf,  
     filename: `reporte-uplink-vlan-olt-${oltId}-vlan-${vlan}-batch-${batch}.pdf`,
     total: run.ids.length,
     batch,
@@ -3134,5 +3245,414 @@ export async function resetUplinkVlanRun(opts: {
     message: "Reset uplink vlan aplicado",
     oltId: String(opts.oltId),
     vlan: String(opts.vlan),
+  };
+}
+
+
+//-------------------------Reporte por GPON-----------------------------------------------------------
+function onuModelRunKey(modelName: string) {
+  return `onumodel:${String(modelName).trim().toLowerCase()}`;
+}
+
+export async function createOnuModelRun(opts: {
+  modelName: string;
+  refresh?: boolean;
+}) {
+  const { modelName, refresh = false } = opts;
+
+  const modelNorm = String(modelName ?? "").trim().toLowerCase();
+  if (!modelNorm) {
+    throw new HttpError(400, "Falta modelName");
+  }
+
+  const catalog = await getCatalogWithMemoryFallback({ refresh });
+  const onus = Array.isArray(catalog.onus) ? catalog.onus : [];
+
+  const filtered = onus.filter((o: any) => {
+    const onuModel = String(o?.onu_type_name ?? "").trim().toLowerCase();
+    return onuModel === modelNorm && isMintic(o);
+  });
+
+  if (!filtered.length) {
+    throw new HttpError(
+      404,
+      `No hay ONUs MINTIC para el modelo ${modelName}`
+    );
+  }
+
+  let ids = filtered
+    .map((o: any) => getExternalId(o))
+    .filter((x): x is string => Boolean(x));
+
+  ids = Array.from(new Set(ids));
+
+  const key = onuModelRunKey(modelNorm);
+  const exported = refresh ? new Set<string>() : getExportedSet(key);
+
+  ids = ids.filter((id) => !exported.has(id));
+
+  if (!ids.length) {
+    throw new HttpError(
+      404,
+      `No hay ONUs MINTIC nuevas para el modelo ${modelName}. Probablemente ya descargaste todo.`
+    );
+  }
+
+  const itemsById = Object.fromEntries(
+    filtered
+      .filter((o: any) => ids.includes(String(getExternalId(o))))
+      .map((o: any) => {
+        const id = String(getExternalId(o));
+        const onuVlans = getOnuVlans(o);
+
+        return [
+          id,
+          {
+            unique_external_id: id,
+            name: String(o?.name ?? ""),
+            status: String(o?.status ?? ""),
+            olt_id: String(o?.olt_id ?? ""),
+            olt_name: String(o?.olt_name ?? o?.olt_id ?? ""),
+            zone_name: String(o?.zone_name ?? ""),
+            catv: String(o?.catv ?? ""),
+            board: String(o?.board ?? ""),
+            port: String(o?.port ?? ""),
+            onu: String(o?.onu ?? ""),
+            comment: String(commentText(o) ?? ""),
+            authorization_date: String(o?.authorization_date ?? ""),
+            isMintic: true,
+            onu_type_name: String(o?.onu_type_name ?? ""),
+            pon_type: String(o?.pon_type ?? ""),
+            onuVlans,
+          },
+        ];
+      })
+  );
+
+  const run = createRun(
+    "onuModel",
+    key,
+    ids,
+    2 * 60 * 60 * 1000,
+    { itemsById }
+  );
+
+  const totalLotes = Math.ceil(ids.length / 100);
+
+  return {
+    runId: run.runId,
+    modelName,
+    total: ids.length,
+    totalLotes,
+    expiresInMinutes: 120,
+    exportUrl: `/api/smart-olt/onu-model/export?runId=${encodeURIComponent(run.runId)}&batch=0&size=100`,
+  };
+}
+
+export async function exportOnuModelRun(opts: {
+  runId: string;
+  batch?: number;
+  size?: number;
+  refresh?: boolean;
+}) {
+  const { runId, batch = 0, size = 100, refresh = false } = opts;
+
+  const run = getRun(runId);
+  if (!run) {
+    throw new HttpError(400, "runId inválido o expirado");
+  }
+
+  if (run.type !== "onuModel") {
+    throw new HttpError(400, "El run no corresponde a tipo onuModel");
+  }
+
+  if (!run.itemsById) {
+    throw new HttpError(400, "El run no tiene snapshot itemsById");
+  }
+
+  const start = batch * size;
+  const end = start + size;
+  const idsBatch = run.ids.slice(start, end);
+
+  if (!idsBatch.length) {
+    throw new HttpError(404, "Lote vacío");
+  }
+
+  const list = idsBatch
+    .map((id) => run.itemsById?.[id])
+    .filter(Boolean);
+
+  type Job = { kind: "signal" | "trafico"; id: string };
+  const jobs: Job[] = [];
+
+  for (const o of list) {
+    const id = getExternalId(o);
+    if (!id) continue;
+    jobs.push({ kind: "signal", id });
+    jobs.push({ kind: "trafico", id });
+  }
+
+  const graphMap = new Map<string, { signal?: any; trafico?: any }>();
+  let smartOltLimitReached = false;
+
+  await mapLimit(jobs, 1, async (job) => {
+    if (smartOltLimitReached) return;
+
+    await sleep(250);
+
+    try {
+      const img =
+        job.kind === "signal"
+          ? await getMonthlyGraphCached(job.id, "signal_monthly", { forceRefresh: refresh })
+          : await getMonthlyGraphCached(job.id, "traffic_monthly", { forceRefresh: refresh });
+
+      const raw = JSON.stringify(img ?? {}).toLowerCase();
+      if (raw.includes("hourly limit")) {
+        smartOltLimitReached = true;
+        return;
+      }
+
+      const prev = graphMap.get(job.id) || {};
+      if (job.kind === "signal") prev.signal = img;
+      else prev.trafico = img;
+      graphMap.set(job.id, prev);
+    } catch (error: any) {
+      const txt = String(error?.message ?? error).toLowerCase();
+      if (txt.includes("hourly limit")) {
+        smartOltLimitReached = true;
+        return;
+      }
+      throw error;
+    }
+  });
+
+  if (smartOltLimitReached) {
+    throw new HttpError(
+      429,
+      "Se activó el límite de consultas de SmartOLT (hourly limit). No se generó el reporte."
+    );
+  }
+
+  const now = new Date();
+  const parts = run.key.split(":");
+  const modelName = parts[1] ?? "";
+
+  const exportedNow = getExportedSet(run.key);
+  const generadasAcum = exportedNow.size + idsBatch.length;
+  const restantes = Math.max(0, run.ids.length - generadasAcum);
+
+  const renderCard = (o: any) => {
+    const onuId = String(o?.unique_external_id ?? "-");
+    const g = graphMap.get(onuId) || {};
+    const pos = `${o?.board ?? ""}/${o?.port ?? ""}/${o?.onu ?? ""}`;
+
+    return `
+      <div class="card">
+        <div class="head">
+          <div class="left">
+            <div class="name">${esc(o?.name ?? onuId)}</div>
+            <div class="sub">
+              <span class="pill ${pillClass(o?.status)}">${esc(o?.status ?? "-")}</span>
+              <span class="pill mintic">MINTIC</span>
+              <span class="pill typepill">${esc(o?.pon_type ?? "-").toUpperCase()}</span>
+              <span class="muted">OLT:</span> <b>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</b>
+            </div>
+            <div class="comment"><span class="muted">Modelo ONU:</span> ${esc(o?.onu_type_name ?? "-")}</div>
+            <div class="comment"><span class="muted">Posición:</span> ${esc(pos || "-")}</div>
+            <div class="comment"><span class="muted">Zona:</span> ${esc(o?.zone_name ?? "-")}</div>
+            <div class="comment"><span class="muted">VLAN ONU:</span> ${esc((o?.onuVlans ?? []).join(", ") || "-")}</div>
+            <div class="comment"><span class="muted">Comentario:</span> ${esc(o?.comment ?? "-")}</div>
+            <div class="comment"><span class="muted">Fecha autorización:</span> ${esc(o?.authorization_date ?? "-")}</div>
+          </div>
+
+          <div class="right">
+            <div class="muted">External ID</div>
+            <div class="idv">${esc(onuId)}</div>
+          </div>
+        </div>
+
+        <div class="sectionTitle">Gráficas mensuales</div>
+        <div class="grid2">
+          ${renderGraphBox("Señal (monthly)", g?.signal)}
+          ${renderGraphBox("Tráfico (monthly)", g?.trafico)}
+        </div>
+      </div>
+    `;
+  };
+
+  const pages = chunk(list, 2);
+
+  const renderPage = (items: any[]) => `
+    <section class="page">
+      <div class="pageHead">
+        <h1>Reporte por modelo ONU | ${esc(modelName)}</h1>
+        <div class="meta">
+          Generado: ${esc(now.toLocaleString())}
+          | Total RUN: ${esc(run.ids.length)}
+          | Generadas: ${esc(generadasAcum)}
+          | Restantes: ${esc(restantes)}
+          | Lote: ${esc(batch)}
+          | Rango: ${esc(start)}-${esc(Math.min(end - 1, run.ids.length - 1))}
+        </div>
+      </div>
+
+      <div class="cards">
+        ${items.map(renderCard).join("")}
+      </div>
+    </section>
+  `;
+
+  const html = `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Reporte Modelo ONU</title>
+        <style>
+          *{ box-sizing:border-box; font-family: Arial, Helvetica, sans-serif; }
+          body{ margin:0; color:#111; background:#f4f6f8; }
+          
+          .page{
+            padding:6mm;
+            page-break-after: always;
+            min-height:190mm;
+            display:flex;
+            flex-direction:column;
+          }
+          .page:last-child{ page-break-after:auto; }
+          .pageHead{ display:flex; flex-direction:column; gap:2px; margin-bottom:4px; }
+          .cards{
+            display:grid;
+            grid-template-rows: 1fr 1fr;
+            gap:6px;
+            flex:1 1 auto;
+            min-height:0;
+          }
+          .card{
+            border:1px solid #dfe5ea;
+            border-radius:14px;
+            padding:8px;
+            background:#fff;
+            box-shadow:0 1px 3px rgba(0,0,0,.05);
+            overflow:hidden;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          h1{ margin:0; font-size:18px; font-weight:900; color:#123; }
+          .meta{ font-size:10px; color:#555; }
+          .head{ display:flex; justify-content:space-between; gap:10px; }
+          .sub{
+            margin-top:3px;
+            font-size:9px;
+            display:flex;
+            gap:6px;
+            align-items:center;
+            flex-wrap:wrap;
+          }
+          .comment{ margin-top:4px; font-size:9px; color:#111; }
+          .muted{ color:#666; font-size:10px; }
+          .right{ min-width:150px; text-align:right; }
+          .idv{
+            font-weight:800;
+            font-size:9px;
+            word-break:break-all;
+            color:#0f172a;
+          }
+          .pill{
+            display:inline-block;
+            padding:2px 8px;
+            border-radius:999px;
+            font-size:9px;
+            border:1px solid #ddd;
+            font-weight:700;
+            background:#fff;
+          }
+          .pill.online{ border-color:#16a34a; color:#16a34a; }
+          .pill.los{ border-color:#c0392b; color:#c0392b; }
+          .pill.pf{ border-color:#7f8c8d; color:#7f8c8d; }
+          .pill.unk{ border-color:#95a5a6; color:#95a5a6; }
+          .pill.mintic{ border-color:#2563eb; color:#2563eb; }
+          .pill.typepill{ border-color:#7c3aed; color:#7c3aed; }
+          .sectionTitle{
+            margin-top:8px;
+            font-size:10px;
+            font-weight:800;
+            color:#0f172a;
+          }
+          .grid2{
+            margin-top:6px;
+            display:grid;
+            grid-template-columns: 1fr 1fr;
+            gap:6px;
+          }
+          .g{
+            border:1px solid #e5e7eb;
+            border-radius:10px;
+            padding:4px;
+            background:#fafafa;
+          }
+          .gt{
+            font-size:10px;
+            font-weight:800;
+            margin-bottom:4px;
+          }
+          .g img{
+            width:100%;
+            max-height:180px;
+            object-fit:contain;
+            display:block;
+            background:#fff;
+            border-radius:8px;
+          }
+          .gempty{
+            min-height:140px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            text-align:center;
+            font-size:10px;
+            color:#666;
+            border:1px dashed #ddd;
+            border-radius:8px;
+            background:#fff;
+            padding:8px;
+          }
+        </style>
+      </head>
+      <body>
+        ${pages.map(renderPage).join("")}
+      </body>
+    </html>
+  `;
+
+  const pdf = await renderPdf(html, {
+    format: "A4",
+    landscape: true,
+    margin: { top: "8mm", right: "6mm", bottom: "8mm", left: "6mm" },
+  });
+
+  markExported(run.key, idsBatch);
+
+  return {
+    pdf,
+    filename: `reporte-onu-model-${modelName}-batch-${batch}.pdf`,
+    total: run.ids.length,
+    batch,
+    size,
+    exportedNow: idsBatch.length,
+    remaining: restantes,
+  };
+}
+
+export async function resetOnuModelRun(opts: {
+  modelName: string;
+}) {
+  const key = onuModelRunKey(opts.modelName);
+  getExportedSet(key).clear();
+
+  return {
+    ok: true,
+    message: "Reset onu model aplicado",
+    modelName: String(opts.modelName),
   };
 }

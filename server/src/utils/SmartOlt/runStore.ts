@@ -11,7 +11,7 @@ type RunItemSnapshop={
 
 type Run = {
   runId: string;
-  type: "upz" | "upzMeta" | "zona" | "estado" | "uplinkVlan";
+  type: "upz" | "upzMeta" | "zona" | "estado" | "uplinkVlan" | "onuModel";
   key: string;
   ids: string[];
   createdAt: number;

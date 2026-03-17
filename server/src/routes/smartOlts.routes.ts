@@ -32,3 +32,8 @@ smartOltRouter.get("/get-uplink/:id", controller.getUplinkDetails)
 smartOltRouter.post("/uplink-vlan/run", controller.createUplinkVlanRun);
 smartOltRouter.get("/uplink-vlan/export", controller.exportUplinkVlanRun);
 smartOltRouter.post("/uplink-vlan/reset", controller.resetUplinkVlanRun);
+
+smartOltRouter.get("/consulta-gpon", controller.getGponDetails);
+smartOltRouter.post("/onu-model/run", controller.createOnuModelRun);
+smartOltRouter.get("/onu-model/export", controller.exportOnuModelRun);
+smartOltRouter.post("/onu-model/reset", controller.resetOnuModelRun);
