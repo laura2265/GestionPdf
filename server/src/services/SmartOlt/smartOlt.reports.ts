@@ -1839,7 +1839,6 @@ export async function resetZonaRun(opts: {
   onlyMintic?: boolean;
 }) {
   const { zona, onlyMintic = true } = opts;
-
   const key = zonaRunKey(zona, onlyMintic);
   getExportedSet(key).clear();
 
@@ -1852,7 +1851,6 @@ export async function resetZonaRun(opts: {
 }
 
 //---------------------Reporte por estado------------
-
 function healthRunKey(filter: HealthFilter, onlyMintic: boolean) {
   const status = String(filter.status ?? "").trim().toLowerCase();
   const signal = String(filter.signal ?? "").trim().toLowerCase();
@@ -1883,6 +1881,9 @@ export async function createHealthRun(opts: {
     onlyMintic = true,
     refresh = false,
   } = opts;
+  
+  const catalog = await getCatalogWithMemoryFallback({ refresh });
+  const onus = Array.isArray(catalog.onus) ? catalog.onus : [];
 
   const status = String(filter.status ?? "").trim().toLowerCase();
   const signal = String(filter.signal ?? "").trim().toLowerCase();
@@ -1891,11 +1892,8 @@ export async function createHealthRun(opts: {
     throw new HttpError(400, "Falta status");
   }
 
-  const catalog = await getCatalogWithMemoryFallback({ refresh });
-  const onus = Array.isArray(catalog.onus) ? catalog.onus : [];
-
   let filtered = onlyMintic ? onus.filter(isMintic) : onus;
-  filtered = filtered.filter((o: any) => matchesHealthFilter(o, { status, signal }));
+  filtered = filtered.filter((o: any) => matchesHealthFilter(o, filter));
 
   if (!filtered.length) {
     throw new HttpError(
@@ -1922,7 +1920,35 @@ export async function createHealthRun(opts: {
     );
   }
 
-  const run = createRun("estado", key, ids, 2 * 60 * 60 * 1000);
+  const itemsById = Object.fromEntries(
+  filtered
+    .filter((o: any) => ids.includes(String(getExternalId(o))))
+    .map((o: any) => {
+      const id = String(getExternalId(o));
+      return [
+        id,
+        {
+          unique_external_id: id,
+          name: String(o?.name ?? ""),
+          status: String(o?.status ?? ""),
+          signal: String(o?.signal ?? ""),
+          signal_1310: String(o?.signal_1310 ?? ""),
+          signal_1490: String(o?.signal_1490 ?? ""),
+          olt_name: String(o?.olt_name ?? o?.olt_id ?? ""),
+          olt_id: String(o?.olt_id ?? ""),
+          catv: String(o?.catv ?? ""),
+          zone_name: String(o?.zone_name ?? ""),
+          board: String(o?.board ?? ""),
+          port: String(o?.port ?? ""),
+          onu: String(o?.onu ?? ""),
+          comment: String(commentText(o) ?? ""),
+          authorization_date: String(o?.authorization_date ?? ""),
+        },
+      ];
+    })
+);
+
+  const run = createRun("estado", key, ids, 2 * 60 * 60 * 1000, {itemsById});
 
   return {
     runId: run.runId,
@@ -2769,7 +2795,6 @@ export async function createUplinkVlanRun(opts: {
   refresh?: boolean;
 }) {
   const { oltId, vlan, refresh = false } = opts;
-
   if (!oltId) {
     throw new HttpError(400, "Falta oltId");
   }
@@ -2961,11 +2986,10 @@ export async function exportUplinkVlanRun(opts: {
       const txt = String(error?.message ?? error).toLowerCase();
       if(txt.includes("hourly limit")){
         smartOltLimitReached = true;
-        return; 
+        return;
       }
       throw error
     }
-
   });
 
   if(smartOltLimitReached){

@@ -518,6 +518,18 @@ export async function reportStatsPdf(req, res, next) {
 }
 
 //----------------------reporte por uplink----------
+export async function getOltList(req: any, res:any, next:any) {
+  try{
+    const data = await client.getOltList();
+    
+    return res.status(200).json({
+      data
+    })
+  }catch(error){
+    next()
+  }
+}
+
 export async function getUplinkDetails(req: any, res: any, next: any) {
   try {
     const id = req.params?.id;

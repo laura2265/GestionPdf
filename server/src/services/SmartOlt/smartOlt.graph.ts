@@ -18,20 +18,23 @@ export async function  getMonthlyGraphCached(
             };
         }
     }
+
     const response = 
         kind === "signal_monthly"
         ?await client.getOnuSignalGraphDataUrl(externalId, "monthly")
         : await client.getOnuTrafficGraphDataUrl(externalId, "monthly");
 
+    const ok = !!response?.ok && !!response?.dataUrl;
+
     const saved = setGraphCache(
-        externalId,
-        kind,
-        {
-            ok: !!response?.ok,
-            dataUrl: response?.dataUrl,
-            text: response?.text,
-        },
-        60*60*1000
+      externalId,
+      kind,
+      {
+        ok,
+        dataUrl: ok ? response?.dataUrl : undefined,
+        text: response?.text ?? (ok ? "" : "Gráfica no disponible"),
+      },
+      60 * 60 * 1000
     );
 
     return {

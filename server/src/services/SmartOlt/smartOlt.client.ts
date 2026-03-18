@@ -337,3 +337,31 @@ export async function getGponDetails() {
     }
   }
 }
+
+export async function getOltList() {
+  const url = `${baseUrl}/system/get_olts`
+  try{
+    const r = await fetch(url, {
+      method: "GET",
+      headers: {
+        "X-Token": tokenSmart,
+        Accept: "application/json",
+      }
+    })
+    if(!r.ok){
+      return "no se muestran datos de data"
+    }
+    const data = await r.json()
+
+    return{
+      ok: true,
+      data: data.response
+    }
+
+  }catch(err: any){
+    return{
+      ok: false,
+      message: err.message
+    }
+  }  
+}

@@ -28,6 +28,7 @@ smartOltRouter.post("/report/pdf-health/reset", controller.resetHealthRun);
 smartOltRouter.get("/report/stats", controller.reportStats)
 smartOltRouter.get("/report/stats-pdf", controller.reportStatsPdf)
 
+smartOltRouter.get("/get-olt-list", controller.getOltList);
 smartOltRouter.get("/get-uplink/:id", controller.getUplinkDetails)
 smartOltRouter.post("/uplink-vlan/run", controller.createUplinkVlanRun);
 smartOltRouter.get("/uplink-vlan/export", controller.exportUplinkVlanRun);

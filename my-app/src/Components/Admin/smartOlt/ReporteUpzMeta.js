@@ -286,6 +286,7 @@ export default function ReportesUpzMeta() {
               <button onClick={() => navigate("/reporte-Upz-Meta")}>Reporte por Meta</button>
               <button onClick={() => navigate("/reporte-zona")}>Reporte por Zona</button>
               <button onClick={() => navigate("/reporte-estado")}>Reporte por Estado</button>
+              <button onClick={() => navigate("/reporte-uplink")}>Reporte por Uplink</button>
             </div>
           </div>
 
