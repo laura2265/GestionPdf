@@ -3112,14 +3112,14 @@ export async function exportUplinkVlanRun(opts: {
           .cards{
             display:grid;
             grid-template-rows: 1fr 1fr;
-            gap:5px;
+            gap:8px;
             flex:1 1 auto;
             min-height:0;
           }
           .card{
             border:1px solid #dfe5ea;
             border-radius:14px;
-            padding:6px;
+            padding:10px;
             background:#fff;
             box-shadow:0 1px 3px rgba(0,0,0,.05);
             overflow:hidden;
@@ -3130,27 +3130,27 @@ export async function exportUplinkVlanRun(opts: {
           .meta{ font-size:10px; color:#555; }
           .head{ display:flex; justify-content:space-between; gap:10px; }
           .sub{
-            margin-top:3px;
-            font-size:9px;
+            margin-top:5px;
+            font-size:12px;
             display:flex;
             gap:6px;
             align-items:center;
             flex-wrap:wrap;
           }
-          .comment{ margin-top:4px; font-size:8px; color:#111; }
+          .comment{ margin-top:7px; font-size:10px; color:#111; }
           .muted{ color:#666; font-size:10px; }
           .right{ min-width:150px; text-align:right; }
           .idv{
             font-weight:800;
-            font-size:9px;
+            font-size:12px;
             word-break:break-all;
             color:#0f172a;
           }
           .pill{
             display:inline-block;
-            padding:2px 8px;
+            padding:4px 12px;
             border-radius:999px;
-            font-size:9px;
+            font-size:12px;
             border:1px solid #ddd;
             font-weight:700;
             background:#fff;
@@ -3162,34 +3162,34 @@ export async function exportUplinkVlanRun(opts: {
           .pill.mintic{ border-color:#2563eb; color:#2563eb; }
           .pill.nomintic{ border-color:#64748b; color:#64748b; }
           .sectionTitle{
-            margin-top:8px;
-            font-size:10px;
+            margin-top:12px;
+            font-size:12px;
             font-weight:800;
             color:#0f172a;
           }
           .uplinkBox{
-            margin-top:4px;
+            margin-top:8px;
             border:1px solid #e5e7eb;
             border-radius:10px;
-            padding:6px;
+            padding:10px;
             background:#fafafa;
           }
           .uplinkItem{
-            padding:5px 0;
+            padding:7px 0;
             border-bottom:1px dashed #ddd;
-            font-size:9px;
+            font-size:10px;
           }
           .uplinkItem:last-child{ border-bottom:0; }
-          .small{ font-size:9px; color:#555; }
+          .small{ font-size:12px; color:#555; }
           .graphs{
             display:grid;
             grid-template-columns: 1fr 1fr;
-            gap:8px;
-            margin-top:6px;
+            gap:10px;
+            margin-top:9px;
           }
 
           .grid2{
-            margin-top:6px;
+            margin-top:9px;
             display:grid;
             grid-template-columns: 1fr 1fr;
             gap:6px;
@@ -3198,19 +3198,19 @@ export async function exportUplinkVlanRun(opts: {
           .g{
             border:1px solid #e5e7eb;
             border-radius:10px;
-            padding:4px;
+            padding:10px;
             background:#fafafa;
           }
 
           .gt{
             font-size:10px;
             font-weight:800;
-            margin-bottom:4px;
+            margin-bottom:9px;
           }
 
           .g img{
             width:100%;
-            max-height:180px;
+            max-height:190px;
             object-fit:contain;
             display:block;
             background:#fff;
@@ -3481,12 +3481,18 @@ export async function exportOnuModelRun(opts: {
               <span class="pill typepill">${esc(o?.pon_type ?? "-").toUpperCase()}</span>
               <span class="muted">OLT:</span> <b>${esc(o?.olt_name ?? o?.olt_id ?? "-")}</b>
             </div>
-            <div class="comment"><span class="muted">Modelo ONU:</span> ${esc(o?.onu_type_name ?? "-")}</div>
-            <div class="comment"><span class="muted">Posición:</span> ${esc(pos || "-")}</div>
-            <div class="comment"><span class="muted">Zona:</span> ${esc(o?.zone_name ?? "-")}</div>
-            <div class="comment"><span class="muted">VLAN ONU:</span> ${esc((o?.onuVlans ?? []).join(", ") || "-")}</div>
-            <div class="comment"><span class="muted">Comentario:</span> ${esc(o?.comment ?? "-")}</div>
-            <div class="comment"><span class="muted">Fecha autorización:</span> ${esc(o?.authorization_date ?? "-")}</div>
+            <div class="ContainerComents">
+              <div class="content-comments">
+                <div class="comment"><span class="muted">Modelo ONU:</span> ${esc(o?.onu_type_name ?? "-")}</div>
+                <div class="comment"><span class="muted">Posición:</span> ${esc(pos || "-")}</div>
+                <div class="comment"><span class="muted">Zona:</span> ${esc(o?.zone_name ?? "-")}</div>
+              </div>
+              <div class="content-comments">
+                <div class="comment"><span class="muted">VLAN ONU:</span> ${esc((o?.onuVlans ?? []).join(", ") || "-")}</div>
+                <div class="comment"><span class="muted">Comentario:</span> ${esc(o?.comment ?? "-")}</div>
+                <div class="comment"><span class="muted">Fecha autorización:</span> ${esc(o?.authorization_date ?? "-")}</div>
+              </div>
+            </div>
           </div>
 
           <div class="right">
@@ -3537,34 +3543,58 @@ export async function exportOnuModelRun(opts: {
           body{ margin:0; color:#111; background:#f4f6f8; }
           
           .page{
+            height:194mm;
             padding:6mm;
             page-break-after: always;
-            min-height:190mm;
             display:flex;
             flex-direction:column;
+            overflow:hidden;
           }
+          
           .page:last-child{ page-break-after:auto; }
-          .pageHead{ display:flex; flex-direction:column; gap:2px; margin-bottom:4px; }
+          
+          .pageHead{
+            display:flex;
+            flex-direction:column;
+            gap:2px;
+            margin-bottom:3px;
+            flex:0 0 auto;
+          }
+          
           .cards{
             display:grid;
-            grid-template-rows: 1fr 1fr;
-            gap:6px;
+            grid-template-rows: repeat(2, minmax(0, 1fr));
+            gap:5px;
             flex:1 1 auto;
             min-height:0;
+            overflow:hidden;
           }
+          
           .card{
             border:1px solid #dfe5ea;
             border-radius:14px;
-            padding:8px;
+            padding:6px;
             background:#fff;
             box-shadow:0 1px 3px rgba(0,0,0,.05);
             overflow:hidden;
             page-break-inside: avoid;
             break-inside: avoid;
+            height:100%;
+            min-height:0;
+            display:flex;
+            flex-direction:column;
           }
+          
           h1{ margin:0; font-size:18px; font-weight:900; color:#123; }
           .meta{ font-size:10px; color:#555; }
-          .head{ display:flex; justify-content:space-between; gap:10px; }
+          
+          .head{
+            display:flex;
+            justify-content:space-between;
+            gap:10px;
+            flex:0 0 auto;
+          }
+          
           .sub{
             margin-top:3px;
             font-size:9px;
@@ -3573,15 +3603,23 @@ export async function exportOnuModelRun(opts: {
             align-items:center;
             flex-wrap:wrap;
           }
-          .comment{ margin-top:4px; font-size:9px; color:#111; }
+          .ContainerComents{
+            display: flex;
+          }
+          .ContainerComents .content-comments{
+            margin: 0 1.5rem
+          }
+          .comment{ margin-top:4px; font-size:8px; color:#111; }
           .muted{ color:#666; font-size:10px; }
           .right{ min-width:150px; text-align:right; }
+          
           .idv{
             font-weight:800;
             font-size:9px;
             word-break:break-all;
             color:#0f172a;
           }
+          
           .pill{
             display:inline-block;
             padding:2px 8px;
@@ -3591,45 +3629,74 @@ export async function exportOnuModelRun(opts: {
             font-weight:700;
             background:#fff;
           }
+          
           .pill.online{ border-color:#16a34a; color:#16a34a; }
           .pill.los{ border-color:#c0392b; color:#c0392b; }
           .pill.pf{ border-color:#7f8c8d; color:#7f8c8d; }
           .pill.unk{ border-color:#95a5a6; color:#95a5a6; }
           .pill.mintic{ border-color:#2563eb; color:#2563eb; }
-          .pill.typepill{ border-color:#7c3aed; color:#7c3aed; }
+          .pill.nomintic{ border-color:#64748b; color:#64748b; }
+          
           .sectionTitle{
-            margin-top:8px;
+            margin-top:6px;
             font-size:10px;
             font-weight:800;
             color:#0f172a;
+            flex:0 0 auto;
           }
+          
+          .uplinkBox{
+            margin-top:4px;
+            border:1px solid #e5e7eb;
+            border-radius:10px;
+            padding:6px;
+            background:#fafafa;
+            flex:0 0 auto;
+          }
+          
+          .uplinkItem{
+            padding:5px 0;
+            border-bottom:1px dashed #ddd;
+            font-size:9px;
+          }
+          
+          .uplinkItem:last-child{ border-bottom:0; }
+          .small{ font-size:9px; color:#555; }
+          
           .grid2{
             margin-top:6px;
             display:grid;
             grid-template-columns: 1fr 1fr;
             gap:6px;
+            min-height:0;
           }
+          
           .g{
             border:1px solid #e5e7eb;
             border-radius:10px;
             padding:4px;
             background:#fafafa;
+            min-height:0;
+            overflow:hidden;
           }
+          
           .gt{
             font-size:10px;
             font-weight:800;
             margin-bottom:4px;
           }
+          
           .g img{
             width:100%;
-            max-height:180px;
+            height:160px;
             object-fit:contain;
             display:block;
             background:#fff;
             border-radius:8px;
           }
+          
           .gempty{
-            min-height:140px;
+            height:120px;
             display:flex;
             align-items:center;
             justify-content:center;

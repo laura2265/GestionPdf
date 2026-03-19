@@ -97,71 +97,71 @@ function Reportes() {
     return newRun;
   };
   const downloadNextBatch = async (upzKey) => {
-  try {
-    setError("");
-    setLoading(true);
-
-    let currentRun = upzRuns[upzKey];
-    console.log(currentRun)
-    if (!currentRun) {
-      currentRun = await createUpzRun(upzKey);
-    }
-
-    const totalBatches = Math.ceil(currentRun.total / currentRun.size);
-
-    if (currentRun.nextBatch >= totalBatches) {
-      setError(`Ya descargaste todos los lotes de ${upzKey.toUpperCase()} ✅`);
-      setMessageType("success");
-      return;
-    }
-
-    const url = new URL(`${API_BASE}/report/pdf-upz/${upzKey}`);
-    url.searchParams.set("runId", currentRun.runId);
-    url.searchParams.set("batch", String(currentRun.nextBatch));
-    url.searchParams.set("size", String(currentRun.size));
-    url.searchParams.set("upz", String(currentRun.upz))
-
-    await downloadPdfOrAlert(url.toString(),upz);
-
-    setUpzRuns((prev) => ({
-      ...prev,
-      [upzKey]: { ...prev[upzKey], nextBatch: prev[upzKey].nextBatch + 1 },
-    }));
-    setError("Se descargo correctamente")
-    setMessageType("success");
-  } catch (e) {
-    const msg = e?.message || "Error descargando lote";
-
-    if (String(msg).toLowerCase().includes("runid")) {
-      setUpzRuns((prev) => ({ ...prev, [upzKey]: null }));
-
-      try {
-        const newRun = await createUpzRun(upzKey);
-
-        const url = new URL(`${API_BASE}/report/pdf-upz/${upzKey}`);
-        url.searchParams.set("runId", newRun.runId);
-        url.searchParams.set("batch", "0");
-        url.searchParams.set("size", String(newRun.size));
-
-        window.open(url.toString(), "_blank", "noopener,noreferrer");
-
-        setUpzRuns((prev) => ({
-          ...prev,
-          [upzKey]: { ...prev[upzKey], nextBatch: 1 },
-        }));
-        return;
-      } catch (e2) {
-        setError(e2?.message || msg);
+    try {
+      setError("");
+      setLoading(true);
+    
+      let currentRun = upzRuns[upzKey];
+      console.log(currentRun)
+      if (!currentRun) {
+        currentRun = await createUpzRun(upzKey);
+      }
+    
+      const totalBatches = Math.ceil(currentRun.total / currentRun.size);
+    
+      if (currentRun.nextBatch >= totalBatches) {
+        setError(`Ya descargaste todos los lotes de ${upzKey.toUpperCase()} ✅`);
+        setMessageType("success");
         return;
       }
+    
+      const url = new URL(`${API_BASE}/report/pdf-upz/${upzKey}`);
+      url.searchParams.set("runId", currentRun.runId);
+      url.searchParams.set("batch", String(currentRun.nextBatch));
+      url.searchParams.set("size", String(currentRun.size));
+      url.searchParams.set("upz", String(currentRun.upz))
+    
+      await downloadPdfOrAlert(url.toString(),upz);
+    
+      setUpzRuns((prev) => ({
+        ...prev,
+        [upzKey]: { ...prev[upzKey], nextBatch: prev[upzKey].nextBatch + 1 },
+      }));
+      setError("Se descargo correctamente")
+      setMessageType("success");
+    } catch (e) {
+      const msg = e?.message || "Error descargando lote";
+    
+      if (String(msg).toLowerCase().includes("runid")) {
+        setUpzRuns((prev) => ({ ...prev, [upzKey]: null }));
+      
+        try {
+          const newRun = await createUpzRun(upzKey);
+        
+          const url = new URL(`${API_BASE}/report/pdf-upz/${upzKey}`);
+          url.searchParams.set("runId", newRun.runId);
+          url.searchParams.set("batch", "0");
+          url.searchParams.set("size", String(newRun.size));
+        
+          window.open(url.toString(), "_blank", "noopener,noreferrer");
+        
+          setUpzRuns((prev) => ({
+            ...prev,
+            [upzKey]: { ...prev[upzKey], nextBatch: 1 },
+          }));
+          return;
+        } catch (e2) {
+          setError(e2?.message || msg);
+          return;
+        }
+      }
+    
+      setError(msg);
+      setMessageType("error");
+    } finally {
+      setLoading(false);
     }
-
-    setError(msg);
-    setMessageType("error");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
 
     const resetUpzRun = async (upzKey) => {

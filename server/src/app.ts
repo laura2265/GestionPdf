@@ -20,6 +20,7 @@ import { errorHandler } from "./middlewares/error-handler.js";
 import { getBaseUrl } from "./utils/http.js";
 import { WebSocketServer } from "ws";
 import { smartOltRouter } from "./routes/smartOlts.routes.js";
+import { mapsRouter } from "./routes/geocodifi.service.js";
 
 const app = express();
 app.set("trust proxy", true);
@@ -29,6 +30,7 @@ const isProd = process.env.NODE_ENV === "production";
 const allowedOrigins = [
   "https://agendamiento.supertv.com.co",
   "https://api.supertv.com.co",
+  "http://localhost:5173",
 ];
 
 const corsOptions: cors.CorsOptions = {
@@ -43,11 +45,11 @@ const corsOptions: cors.CorsOptions = {
   allowedHeaders: ["Content-Type", "x-user-id", "Authorization"],
   credentials: true,
 };
+
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
 app.use(express.json());
-
 app.use(maybeAuth);
 
 (BigInt.prototype as any).toJSON = function () {
@@ -66,11 +68,10 @@ app.use("/api/audit", AuditRouter);
 app.use("/api/estrato", estratoRouter);
 app.use("/api/roles", rolesRouter);
 app.use("/api/user-role", UserRoleRouter);
-
+app.use("/api/maps", mapsRouter);
 
 // Smart Olt
-app.use("/api/smart-olt", smartOltRouter)
-
+app.use("/api/smart-olt", smartOltRouter);
 
 app.get("/health", (_req, res) =>
   res.json({ ok: true, env: process.env.NODE_ENV, marker: "APP-LOCAL-WS" })
@@ -87,6 +88,7 @@ app.get("/debug-url", (req, res) => {
 });
 
 app.use(errorHandler);
+
 const PORT = parseInt((process.env.PORT ?? "").trim(), 10) || 3000;
 
 const server = app.listen(PORT, () => {
