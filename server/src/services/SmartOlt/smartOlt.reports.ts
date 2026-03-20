@@ -3126,31 +3126,31 @@ export async function exportUplinkVlanRun(opts: {
             page-break-inside: avoid;
             break-inside: avoid;
           }
-          h1{ margin:0; font-size:18px; font-weight:900; color:#123; }
-          .meta{ font-size:10px; color:#555; }
+          h1{ margin:0; font-size:16px; font-weight:900; color:#123; }
+          .meta{ font-size:12px; color:#555; }
           .head{ display:flex; justify-content:space-between; gap:10px; }
           .sub{
-            margin-top:5px;
-            font-size:12px;
+            margin-top:10px;
+            font-size:13px;
             display:flex;
             gap:6px;
             align-items:center;
             flex-wrap:wrap;
           }
-          .comment{ margin-top:7px; font-size:10px; color:#111; }
-          .muted{ color:#666; font-size:10px; }
+          .comment{ margin-top:5px; font-size:12px; color:#111; }
+          .muted{ color:#666; font-size:14px; }
           .right{ min-width:150px; text-align:right; }
           .idv{
             font-weight:800;
-            font-size:12px;
+            font-size:13px;
             word-break:break-all;
             color:#0f172a;
           }
           .pill{
             display:inline-block;
-            padding:4px 12px;
+            padding:7px 12px;
             border-radius:999px;
-            font-size:12px;
+            font-size:14px;
             border:1px solid #ddd;
             font-weight:700;
             background:#fff;
@@ -3163,7 +3163,7 @@ export async function exportUplinkVlanRun(opts: {
           .pill.nomintic{ border-color:#64748b; color:#64748b; }
           .sectionTitle{
             margin-top:12px;
-            font-size:12px;
+            font-size:16px;
             font-weight:800;
             color:#0f172a;
           }
@@ -3177,10 +3177,10 @@ export async function exportUplinkVlanRun(opts: {
           .uplinkItem{
             padding:7px 0;
             border-bottom:1px dashed #ddd;
-            font-size:10px;
+            font-size:13px;
           }
           .uplinkItem:last-child{ border-bottom:0; }
-          .small{ font-size:12px; color:#555; }
+          .small{ font-size:13px; color:#555; }
           .graphs{
             display:grid;
             grid-template-columns: 1fr 1fr;
@@ -3203,7 +3203,7 @@ export async function exportUplinkVlanRun(opts: {
           }
 
           .gt{
-            font-size:10px;
+            font-size:15px;
             font-weight:800;
             margin-bottom:9px;
           }
@@ -3245,7 +3245,6 @@ export async function exportUplinkVlanRun(opts: {
   });
 
   markExported(run.key, idsBatch);
-
   return {
     pdf,  
     filename: `reporte-uplink-vlan-olt-${oltId}-vlan-${vlan}-batch-${batch}.pdf`,
@@ -3271,7 +3270,6 @@ export async function resetUplinkVlanRun(opts: {
     vlan: String(opts.vlan),
   };
 }
-
 
 //-------------------------Reporte por GPON-----------------------------------------------------------
 function onuModelRunKey(modelName: string) {

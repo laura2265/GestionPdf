@@ -22,6 +22,7 @@ import ReporteZona from './Components/Admin/smartOlt/ReporteZona.js';
 import ReporteEstado from './Components/Admin/smartOlt/ReporteEstado.js';
 import SmartOLTReportHub from './Components/Admin/smartOlt/Reportes_all.js';
 import ReportUplink from './Components/Admin/smartOlt/ReportUplink.js';
+import ReporteGPN from './Components/Admin/smartOlt/ReporteGpon.js';
 
 function App() {  
   return (
@@ -53,6 +54,11 @@ function App() {
           <Route path='/reporte-uplink' element={
             <PrivateRouter allowedRoles={[1]}>
               <ReportUplink />
+            </PrivateRouter>
+          }/>
+          <Route path='/reporte-model' element={
+            <PrivateRouter allowedRoles={[1]}>
+              <ReporteGPN />
             </PrivateRouter>
           }/>
           <Route path='/reporte-zona' element={

@@ -100,21 +100,21 @@ function Reportes() {
     try {
       setError("");
       setLoading(true);
-    
+
       let currentRun = upzRuns[upzKey];
       console.log(currentRun)
       if (!currentRun) {
         currentRun = await createUpzRun(upzKey);
       }
-    
+
       const totalBatches = Math.ceil(currentRun.total / currentRun.size);
-    
+
       if (currentRun.nextBatch >= totalBatches) {
         setError(`Ya descargaste todos los lotes de ${upzKey.toUpperCase()} ✅`);
         setMessageType("success");
         return;
       }
-    
+
       const url = new URL(`${API_BASE}/report/pdf-upz/${upzKey}`);
       url.searchParams.set("runId", currentRun.runId);
       url.searchParams.set("batch", String(currentRun.nextBatch));
@@ -122,7 +122,7 @@ function Reportes() {
       url.searchParams.set("upz", String(currentRun.upz))
     
       await downloadPdfOrAlert(url.toString(),upz);
-    
+
       setUpzRuns((prev) => ({
         ...prev,
         [upzKey]: { ...prev[upzKey], nextBatch: prev[upzKey].nextBatch + 1 },
@@ -131,13 +131,13 @@ function Reportes() {
       setMessageType("success");
     } catch (e) {
       const msg = e?.message || "Error descargando lote";
-    
+
       if (String(msg).toLowerCase().includes("runid")) {
         setUpzRuns((prev) => ({ ...prev, [upzKey]: null }));
-      
+
         try {
           const newRun = await createUpzRun(upzKey);
-        
+
           const url = new URL(`${API_BASE}/report/pdf-upz/${upzKey}`);
           url.searchParams.set("runId", newRun.runId);
           url.searchParams.set("batch", "0");
@@ -155,14 +155,13 @@ function Reportes() {
           return;
         }
       }
-    
+
       setError(msg);
       setMessageType("error");
     } finally {
       setLoading(false);
     }
   };
-
 
     const resetUpzRun = async (upzKey) => {
       try {
@@ -177,7 +176,6 @@ function Reportes() {
 
         if (!res.ok) throw new Error(data?.message || "No se pudo resetear");
 
-        // limpiar estado local
         setUpzRuns((prev) => ({ ...prev, [upzKey]: null }));
         setListStatus("idle");
         setError("Se reseteo correctamente");
@@ -283,6 +281,7 @@ function Reportes() {
               <button onClick={() => navigate("/reporte-zona")}>Reporte por Zona</button>
               <button onClick={() => navigate("/reporte-estado")}>Reporte por Estado</button>
               <button onClick={() => navigate("/reporte-uplink")}>Reporte por Uplink</button>
+              <button onClick={()=>navigate("/reporte-model")}>Reporte por Modelo</button>
             </div>
           </div>
 
